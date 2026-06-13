@@ -22,7 +22,8 @@ from .send_view import SendView
 from .receive_view import ReceiveView
 from . import dialogs as dlg
 
-STORAGE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "keystore")
+DEFAULT_STORAGE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "keystore")
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -44,14 +45,17 @@ PUBLIC_COLUMNS = [
 
 
 class App(ctk.CTk):
-    def __init__(self):
+    def __init__(self, storage_dir=None):
         super().__init__()
-        self.title("PGP — Zaštita podataka")
+        self.storage_dir = storage_dir or DEFAULT_STORAGE_DIR
+        # Show the keystore folder in the title so two demo instances are
+        # immediately distinguishable side by side.
+        self.title(f"PGP — Zaštita podataka   [{os.path.basename(self.storage_dir)}]")
         self.geometry("980x640")
         self.minsize(860, 560)
         self.configure(fg_color="#15171c")
 
-        self.km = KeyManager(STORAGE_DIR)
+        self.km = KeyManager(self.storage_dir)
         style_treeview()
 
         self._build_header()
@@ -67,7 +71,7 @@ class App(ctk.CTk):
     def _build_header(self):
         header = ctk.CTkFrame(self, fg_color="transparent", height=64)
         header.pack(fill="x", padx=20, pady=(18, 6))
-        ctk.CTkLabel(header, text="PGP Key Manager",
+        ctk.CTkLabel(header, text=f"PGP Key Manager  ·  {os.path.basename(self.storage_dir)}",
                      font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w")
         ctk.CTkLabel(header, text="Keys · exchange · sign · encrypt · decrypt · verify  •  Zaštita podataka 2025/26",
                      text_color="#9aa3b2", font=ctk.CTkFont(size=12)).pack(anchor="w")

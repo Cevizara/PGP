@@ -267,17 +267,36 @@ Both share `models.py` / `errors.py` and review each other's `message.py` half
 
 ---
 
-## 10. How to test / verify by hand
+## 10. How to demonstrate (recommended: two separate users)
 
-Two-person round trip on one machine:
-1. **My Keys → Generate** two pairs, e.g. "Alice" and "Bob" (give each a passphrase).
-2. **My Keys → Export public** for Alice; **Contacts → Import public** it back as
-   a contact (in a real demo you'd do this on the other person's machine).
-3. **Send:** type a message, tick *Sign* (Alice's key) + *Encrypt* (for Bob) +
-   *Compress* + *Radix-64*, click *Create message file* → save `*.pgp`.
-4. **Receive:** *Open message file* → that `.pgp`. It detects the services, asks
-   Bob's passphrase, decrypts, and shows **"Signature VALID — signed by Alice"**.
-5. **Save message** to confirm the original came back byte-for-byte.
+The keystore folder is selectable, so you can run **two instances side by side**,
+each a real separate user with its own key ring. This shows all five requirements
+naturally. The window title and header show which keystore each instance uses.
+
+**Launch both** (double-click, or run from a terminal):
+```
+demo_alice.bat      ->  main.py keystore_alice
+demo_bob.bat        ->  main.py keystore_bob
+```
+(Or generally: `.venv\Scripts\python.exe main.py <folder>`, or set `PGP_KEYSTORE`.)
+
+**Walkthrough:**
+1. **Alice** window: *My Keys → Generate* her pair (passphrase). **Bob** window: same.
+2. Exchange public keys:
+   - Alice: *My Keys → Export public* → `alice_pub.pem`.
+     Bob: *Contacts → Import public* → that file.
+   - Bob: *Export public* → `bob_pub.pem`. Alice: *Contacts → Import public* → it.
+   - Now each ring shows the other person as a contact (requirements 2 & 3).
+3. **Alice → Send:** type a message, tick *Sign* (her key) + *Encrypt* (for Bob) +
+   *Compress* + *Radix-64* → *Create message file* → save `msg.pgp`.
+   (Hand the file over by any channel — that's the point of PGP.)
+4. **Bob → Receive:** *Open message file* → `msg.pgp`. It detects the services,
+   asks **Bob's** passphrase, decrypts, and shows **"Signature VALID — signed by Alice"**.
+5. *Save message* to confirm the original came back byte-for-byte.
+
+> **One-window shortcut** (quicker but less realistic): generate both pairs in a
+> single instance and skip the export/import — the receive step still finds Bob's
+> private key and Alice's public key by Key ID. Use this only for a fast sanity check.
 
 The crypto engine has been exercised across **all 16 combinations** of the four
 services (plus wrong-passphrase and corruption cases) during development.
