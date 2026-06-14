@@ -30,16 +30,15 @@ class KeyManager:
     # Requirement 1: generate / delete RSA key pairs                     #
     # ------------------------------------------------------------------ #
     def generate_keypair(self, name, email, key_size, passphrase) -> PrivateKeyEntry:
-        private_key, public_key = K.generate_rsa_keypair(key_size)
+        private_key, public_key = K.generateRsaPairOfKeys(key_size)
         entry = PrivateKeyEntry(
-            key_id=K.compute_key_id(public_key),
+            key_id=K.computeKeyId(public_key),
             name=name,
             email=email,
             key_size=key_size,
-            public_key=K.public_key_to_pem(public_key),
-            enc_private_key=encrypt_private_key(K.private_key_to_pem(private_key), passphrase),
+            public_key=K.publicKeyToPem(public_key),
+            enc_private_key=encrypt_private_key(K.privateKeyToPem(private_key), passphrase),
             timestamp=_now(),
-            fingerprint=K.compute_fingerprint(public_key),
         )
         self.private_ring.add(entry)
         return entry
@@ -62,7 +61,7 @@ class KeyManager:
         if not entry:
             raise KeyNotFound(key_id)
         pem = decrypt_private_key(entry.enc_private_key, passphrase)  # may raise WrongPassphrase
-        return K.load_private_key_from_pem(pem)
+        return K.loadPrivateKeyFromPem(pem)
 
     def verify_passphrase(self, key_id, passphrase) -> bool:
         try:
@@ -78,17 +77,16 @@ class KeyManager:
         with open(path, "rb") as f:
             data = f.read()
         try:
-            public_key = K.load_public_key_from_pem(data)
+            public_key = K.loadPublicKeyFromPem(data)
         except Exception as exc:
             raise InvalidKeyFile(f"Not a valid public-key PEM file.\n({exc})")
         entry = PublicKeyEntry(
-            key_id=K.compute_key_id(public_key),
+            key_id=K.computeKeyId(public_key),
             name=name,
             email=email,
-            key_size=K.key_size_of(public_key),
-            public_key=K.public_key_to_pem(public_key),
+            key_size=public_key.key_size,
+            public_key=K.publicKeyToPem(public_key),
             timestamp=_now(),
-            fingerprint=K.compute_fingerprint(public_key),
         )
         self.public_ring.add(entry)
         return entry
@@ -97,7 +95,7 @@ class KeyManager:
         with open(path, "rb") as f:
             data = f.read()
         try:
-            private_key = K.load_private_key_from_pem(data, pem_password or None)
+            private_key = K.loadPrivateKeyFromPem(data, pem_password or None)
         except (TypeError, ValueError) as exc:
             raise InvalidKeyFile(
                 "Could not load the private key. The file may not be a private-key "
@@ -105,21 +103,20 @@ class KeyManager:
             )
         public_key = private_key.public_key()
         entry = PrivateKeyEntry(
-            key_id=K.compute_key_id(public_key),
+            key_id=K.computeKeyId(public_key),
             name=name,
             email=email,
-            key_size=K.key_size_of(public_key),
-            public_key=K.public_key_to_pem(public_key),
-            enc_private_key=encrypt_private_key(K.private_key_to_pem(private_key), keyring_passphrase),
+            key_size=public_key.key_size,
+            public_key=K.publicKeyToPem(public_key),
+            enc_private_key=encrypt_private_key(K.privateKeyToPem(private_key), keyring_passphrase),
             timestamp=_now(),
-            fingerprint=K.compute_fingerprint(public_key),
         )
         self.private_ring.add(entry)
         return entry
 
-    def export_public_key(self, key_id, path, ring="private") -> None:
-        source = self.private_ring if ring == "private" else self.public_ring
-        entry = source.get(key_id)
+    def export_public_key(self, key_id, path) -> None:
+        """Export the public key from either ring — checks private ring first."""
+        entry = self.private_ring.get(key_id) or self.public_ring.get(key_id)
         if not entry:
             raise KeyNotFound(key_id)
         with open(path, "w", encoding="utf-8") as f:
@@ -128,6 +125,6 @@ class KeyManager:
     def export_keypair(self, key_id, keyring_passphrase, path, export_password=None) -> None:
         # Unlocking the private key here enforces "every access needs a passphrase".
         private_key = self.get_private_key(key_id, keyring_passphrase)  # may raise WrongPassphrase
-        pem = K.private_key_to_pem(private_key, export_password or None)
+        pem = K.privateKeyToPem(private_key, export_password or None)
         with open(path, "wb") as f:
             f.write(pem)

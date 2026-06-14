@@ -65,7 +65,7 @@ class ReceiveView(ctk.CTkScrollableFrame):
 
         # 1) inspect (no secrets needed)
         try:
-            info = M.inspect_message(raw)
+            info = M.inspectMessage(raw)
         except MessageError as exc:
             self._fail(str(exc)); return
 
@@ -82,7 +82,7 @@ class ReceiveView(ctk.CTkScrollableFrame):
         passphrase = None
         while True:
             try:
-                result = M.process_message(self.km, raw, passphrase=passphrase)
+                result = M.pgpReceive(self.km, raw, passphrase=passphrase)
                 break
             except NeedPassphrase as need:
                 res = dlg.PassphraseDialog(

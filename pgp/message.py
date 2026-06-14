@@ -1,48 +1,27 @@
-"""The PGP message engine: build a message file (send) and process one (receive).
+"""The PGP message engine.
 
-FILE FORMAT (our own, but faithful to the slide "struktura poruke")
--------------------------------------------------------------------
-The on-disk file is a JSON "outer container" (UTF-8). When radix-64 is enabled
-the whole container is additionally ASCII-armored (see radix64.py). Binary
-fields are Base64 strings so they fit in JSON.
+Read this file top-to-bottom like the slide diagrams:
+  - the SEND substeps, then `pgpSend` (the send orchestrator),
+  - the RECEIVE substeps, then `pgpReceive` (the receive orchestrator).
 
-Outer container:
-    {
-      "version": "...",
-      "signed": bool, "compressed": bool, "encrypted": bool, "radix64": bool,
-      "sym_algo": "AES-128" | "3DES" | null,
-      "iv": <base64> | null,                       # symmetric IV, if encrypted
-      "session_key": {                             # present iff encrypted
-          "recipient_key_id": "....",
-          "enc_session_key": <base64 of EP(PUb, Ks)>
-      },
-      "payload": <base64>                          # the processed inner block
-    }
+Each substep is one small, clearly named function; the orchestrators just call
+them in order. The on-disk file is a JSON "outer container" (UTF-8); binary
+fields are Base64 so they fit in JSON. When radix-64 is on, the whole container
+is Base64-armored.
 
-The "payload" holds the inner block AFTER the chosen transforms:
-    inner JSON  --(optional ZIP)-->  --(optional EC(Ks))-->  payload bytes
+  Outer:  version, flags (signed/compressed/encrypted/radix64), sym_algo, iv,
+          session_key {recipient_key_id, enc_session_key}, payload
+  Inner:  message {filename, timestamp, data}
+          signature {timestamp, signer_key_id, leading_two_octets, signature}
 
-Inner block (the signature + message components):
-    {
-      "message":  { "filename": ..., "timestamp": ..., "data": <base64> },
-      "signature":{                                # present iff signed
-          "timestamp": ...,
-          "signer_key_id": "....",
-          "leading_two_octets": "ABCD",            # first 2 bytes of SHA-1 digest
-          "signature": <base64 of E(PRa, H(data||sig_ts))>
-      }
-    }
-
-ORDER (send):  sign -> compress -> encrypt -> radix64
-ORDER (recv):  un-radix64 -> decrypt -> decompress -> verify
-Every stage is optional and independent; the receiver reads the flags and the
-structure to decide what to reverse.
+ORDER (send):     sign -> compress -> encrypt -> radix64
+ORDER (receive):  un-radix64 -> decrypt -> decompress -> verify
 """
 
 import json
 import base64
 import hashlib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from . import keys as K
@@ -66,93 +45,146 @@ def _unb64(text: str) -> bytes:
     return base64.b64decode(text)
 
 
-def _find_public_key(km, key_id):
-    """Look up a public key by Key ID: first in Contacts, then among own keys."""
-    entry = km.public_ring.get(key_id)
-    if entry:
-        return entry
-    return km.private_ring.get(key_id)   # own public part (PrivateKeyEntry also has .public_key)
+# =========================================================================== #
+# SEND substeps                                                               #
+# =========================================================================== #
+
+def loadPrivateKey(km, key_id, passphrase):
+    """Decrypt our private key from the private ring (asks the passphrase)."""
+    return km.get_private_key(key_id, passphrase)          # may raise WrongPassphrase
 
 
-# --------------------------------------------------------------------------- #
-# SEND                                                                        #
-# --------------------------------------------------------------------------- #
-def create_message(km, message_bytes: bytes, filename: str, *,
-                   sign=False, signer_key_id=None, signer_passphrase=None,
-                   encrypt=False, recipient_key_id=None, sym_algo="AES-128",
-                   compress=False, radix64_armor=False) -> bytes:
-    """Build a PGP message file and return its bytes. Raises WrongPassphrase if
-    signing and the signer passphrase is wrong, KeyNotFound for missing keys."""
+def buildMessageComponent(message: bytes, filename: str) -> dict:
+    """The message component: the data itself + its name + a timestamp."""
+    return {"filename": filename, "timestamp": _now(), "data": _b64(message)}
 
-    # --- message component ------------------------------------------------- #
-    inner = {
-        "message": {
-            "filename": filename,
-            "timestamp": _now(),
-            "data": _b64(message_bytes),
-        }
+
+def hashMessage(message: bytes, timestamp: str) -> bytes:
+    """H(M || timestamp) -> 160-bit SHA-1 digest (timestamp bound in for anti-replay)."""
+    return hashlib.sha1(message + timestamp.encode("utf-8")).digest()
+
+
+def buildSignature(message: bytes, private_key, signer_key_id: str) -> dict:
+    """The signature component: sign H(M||ts) with the sender's private key."""
+    timestamp = _now()
+    digest = hashMessage(message, timestamp)
+    signature = K.rsaSign(private_key, message + timestamp.encode("utf-8"))   # EP(PRa, H(M))
+    return {
+        "timestamp": timestamp,
+        "signer_key_id": signer_key_id,
+        "leading_two_octets": digest[:2].hex().upper(),
+        "signature": _b64(signature),
     }
 
-    # --- signature component (sign the UNcompressed data) ------------------ #
-    if sign:
-        if not km.private_ring.get(signer_key_id):
-            raise KeyNotFound(f"Signing key {signer_key_id} is not in your private ring.")
-        private_key = km.get_private_key(signer_key_id, signer_passphrase)  # may raise WrongPassphrase
-        sig_ts = _now()
-        signed_data = message_bytes + sig_ts.encode("utf-8")   # bind timestamp (anti-replay)
-        digest = hashlib.sha1(signed_data).digest()
-        inner["signature"] = {
-            "timestamp": sig_ts,
-            "signer_key_id": signer_key_id,
-            "leading_two_octets": digest[:2].hex().upper(),
-            "signature": _b64(K.rsa_sign(private_key, signed_data)),
-        }
 
-    payload = json.dumps(inner).encode("utf-8")
+def concat(signatureComponent, messageComponent) -> bytes:
+    """The '||' block: signature (optional) + message, serialized to bytes."""
+    inner = {"message": messageComponent}
+    if signatureComponent is not None:
+        inner["signature"] = signatureComponent
+    return json.dumps(inner).encode("utf-8")
 
-    # --- compression ------------------------------------------------------- #
-    if compress:
-        payload = compression.compress(payload)
 
-    # --- encryption (+ session-key component) ------------------------------ #
-    iv_b64 = None
-    session_component = None
-    if encrypt:
-        pub_entry = _find_public_key(km, recipient_key_id)
-        if not pub_entry:
-            raise KeyNotFound(f"Recipient key {recipient_key_id} is not in your keyring.")
-        public_key = K.load_public_key_from_pem(pub_entry.public_key.encode("utf-8"))
-        session_key = ciphers.generate_session_key(sym_algo)
-        iv, payload = ciphers.symmetric_encrypt(sym_algo, session_key, payload)
-        iv_b64 = _b64(iv)
-        session_component = {
-            "recipient_key_id": recipient_key_id,
-            "enc_session_key": _b64(K.rsa_encrypt(public_key, session_key)),
-        }
+def compress(data: bytes) -> bytes:
+    """Z(data) — ZIP compression."""
+    return compression.compressData(data)
 
-    # --- outer container --------------------------------------------------- #
+
+def generateSessionKey(algo: str) -> bytes:
+    """A fresh random one-time session key Ks for this message."""
+    return ciphers.generateSessionKey(algo)
+
+
+def encryptMessage(session_key: bytes, data: bytes, algo: str):
+    """EC(Ks, data) — symmetric encrypt. Returns (iv, ciphertext)."""
+    return ciphers.symmetricEncrypt(algo, session_key, data)
+
+
+def getRecipientPublicKey(km, key_id):
+    """PUb — recipient's public key from the public ring (or our own keys)."""
+    entry = km.public_ring.get(key_id) or km.private_ring.get(key_id)
+    if not entry:
+        raise KeyNotFound(f"Recipient key {key_id} is not in your keyring.")
+    return K.loadPublicKeyFromPem(entry.public_key.encode("utf-8"))
+
+
+def encryptSessionKey(public_key, session_key: bytes) -> bytes:
+    """EP(PUb, Ks) — encrypt the session key with the recipient's public key."""
+    return K.rsaEncrypt(public_key, session_key)
+
+
+def buildSessionKeyComponent(encrypted_session_key: bytes, recipient_key_id: str) -> dict:
+    """The session-key component: recipient's Key ID + E[PUb, Ks]."""
+    return {"recipient_key_id": recipient_key_id,
+            "enc_session_key": _b64(encrypted_session_key)}
+
+
+def assembleOutput(*, signed, compressed, encrypted, radix64Required,
+                   sym_algo, iv, sessionKeyComponent, payload) -> bytes:
+    """The final outer container (JSON) describing what was applied + the payload."""
     outer = {
         "version": VERSION,
-        "signed": bool(sign),
-        "compressed": bool(compress),
-        "encrypted": bool(encrypt),
-        "radix64": bool(radix64_armor),
-        "sym_algo": sym_algo if encrypt else None,
-        "iv": iv_b64,
-        "session_key": session_component,
+        "signed": bool(signed),
+        "compressed": bool(compressed),
+        "encrypted": bool(encrypted),
+        "radix64": bool(radix64Required),
+        "sym_algo": sym_algo if encrypted else None,
+        "iv": _b64(iv) if iv is not None else None,
+        "session_key": sessionKeyComponent,
         "payload": _b64(payload),
     }
-    outer_bytes = json.dumps(outer, indent=2).encode("utf-8")
+    return json.dumps(outer, indent=2).encode("utf-8")
 
-    # --- radix-64 ---------------------------------------------------------- #
-    if radix64_armor:
-        return radix64.armor(outer_bytes).encode("ascii")
-    return outer_bytes
+
+def radix64encode(data: bytes) -> bytes:
+    """R64(data) — Base64-armor the whole block into ASCII."""
+    return radix64.radix64encode(data).encode("ascii")
 
 
 # --------------------------------------------------------------------------- #
+# Send orchestrator                                                           #
+# --------------------------------------------------------------------------- #
+def pgpSend(km, message: bytes, filename: str, *,
+            signRequired=False, signerKeyId=None, passphrase=None,
+            confidentialityRequired=False, recipientKeyId=None, symAlgo="AES-128",
+            compressRequired=False, radix64Required=False) -> bytes:
+    """Build a PGP message file from `message`. Returns the file bytes."""
+
+    # 1. signature (optional) + message
+    X = concat(None, buildMessageComponent(message, filename))
+    if signRequired:
+        PRa = loadPrivateKey(km, signerKeyId, passphrase)
+        X = concat(buildSignature(message, PRa, signerKeyId),
+                   buildMessageComponent(message, filename))
+
+    # 2. compress (optional)
+    if compressRequired:
+        X = compress(X)
+
+    # 3. encrypt (optional) + session-key component
+    iv = None
+    sessionKeyComponent = None
+    if confidentialityRequired:
+        Ks = generateSessionKey(symAlgo)
+        iv, X = encryptMessage(Ks, X, symAlgo)
+        PUb = getRecipientPublicKey(km, recipientKeyId)
+        sessionKeyComponent = buildSessionKeyComponent(encryptSessionKey(PUb, Ks), recipientKeyId)
+
+    # 4. assemble the outer container
+    X = assembleOutput(signed=signRequired, compressed=compressRequired,
+                       encrypted=confidentialityRequired, radix64Required=radix64Required,
+                       sym_algo=symAlgo, iv=iv, sessionKeyComponent=sessionKeyComponent,
+                       payload=X)
+
+    # 5. radix-64 (optional)
+    if radix64Required:
+        X = radix64encode(X)
+    return X
+
+
+# =========================================================================== #
 # RECEIVE                                                                     #
-# --------------------------------------------------------------------------- #
+# =========================================================================== #
 @dataclass
 class MessageInfo:
     """What the file declares about itself — readable without any passphrase."""
@@ -162,7 +194,7 @@ class MessageInfo:
     compressed: bool = False
     sym_algo: str | None = None
     recipient_key_id: str | None = None
-    _outer: dict = field(default_factory=dict, repr=False)
+    _outer: dict = None
 
 
 @dataclass
@@ -175,7 +207,7 @@ class MessageResult:
     was_signed: bool = False
     sym_algo: str | None = None
     recipient_key_id: str | None = None
-    # signature outcome: True=valid, False=invalid, None=could not check
+    # signature outcome: True = valid, False = invalid, None = could not check
     signature_valid: object = None
     signer_key_id: str | None = None
     signer_user_id: str | None = None
@@ -183,18 +215,27 @@ class MessageResult:
     signer_note: str = ""
 
 
-def inspect_message(raw: bytes) -> MessageInfo:
-    """Parse only the outer header so the GUI knows what services were applied
+def radix64decode(text: str) -> bytes:
+    """R64_inv — Base64 ASCII back to binary."""
+    return radix64.radix64decode(text)
+
+
+def inspectMessage(raw: bytes) -> MessageInfo:
+    """Read only the outer header so the GUI knows what services were applied
     (and which key it is encrypted to) before asking for a passphrase."""
     try:
         text = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
         raise MessageError("Not a valid PGP message file (bad encoding).")
 
-    is_armored = radix64.is_armored(text)
     try:
-        outer_bytes = radix64.dearmor(text) if is_armored else raw
-        outer = json.loads(outer_bytes)
+        # A non-armored file is raw JSON; an armored file is Base64 of that JSON.
+        try:
+            outer = json.loads(text)
+            is_armored = False
+        except json.JSONDecodeError:
+            outer = json.loads(radix64decode(text))
+            is_armored = True
     except (ValueError, json.JSONDecodeError) as exc:
         raise MessageError(f"Not a valid PGP message file.\n({exc})")
 
@@ -213,84 +254,124 @@ def inspect_message(raw: bytes) -> MessageInfo:
     )
 
 
-def process_message(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
+# --------------------------------------------------------------------------- #
+# Receive substeps                                                            #
+# --------------------------------------------------------------------------- #
+
+def parseSessionKeyComponent(outer: dict):
+    """Extract recipient Key ID, encrypted Ks, IV and algorithm from the header."""
+    session = outer.get("session_key") or {}
+    return (session.get("recipient_key_id"),
+            _unb64(session["enc_session_key"]),
+            _unb64(outer["iv"]),
+            outer["sym_algo"])
+
+
+def decryptSessionKey(private_key, encrypted_session_key: bytes) -> bytes:
+    """DP(PRb, E[PUb, Ks]) -> Ks."""
+    return K.rsaDecrypt(private_key, encrypted_session_key)
+
+
+def decryptMessage(session_key: bytes, iv: bytes, ciphertext: bytes, algo: str) -> bytes:
+    """DC(Ks, ciphertext) -> compressed signature+message."""
+    return ciphers.symmetricDecrypt(algo, session_key, iv, ciphertext)
+
+
+def decompress(data: bytes) -> bytes:
+    """Z_inv(data) — ZIP decompression."""
+    return compression.decompressData(data)
+
+
+def parseSignedMessage(inner_bytes: bytes):
+    """Split the inner block into (messageComponent, signatureComponent or None)."""
+    inner = json.loads(inner_bytes)
+    return inner["message"], inner.get("signature")
+
+
+def getSenderPublicKey(km, key_id):
+    """PUa — sender's public key (from contacts, or our own). Returns (key, user_id)
+    or (None, None) if not found."""
+    entry = km.public_ring.get(key_id) or km.private_ring.get(key_id)
+    if not entry:
+        return None, None
+    return K.loadPublicKeyFromPem(entry.public_key.encode("utf-8")), entry.user_id
+
+
+def verifySignature(public_key, signatureComponent: dict, message: bytes) -> bool:
+    """Recompute H(M||ts) and check it against the signature with the sender's PUa."""
+    timestamp = signatureComponent.get("timestamp", "")
+    digest = hashMessage(message, timestamp)
+    if digest[:2].hex().upper() != signatureComponent.get("leading_two_octets"):
+        return False
+    return K.rsaVerify(public_key, _unb64(signatureComponent["signature"]),
+                        message + timestamp.encode("utf-8"))
+
+
+# --------------------------------------------------------------------------- #
+# Receive orchestrator                                                        #
+# --------------------------------------------------------------------------- #
+def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
     """Reverse every applied stage and verify the signature.
 
-    Raises NeedPassphrase if the message is encrypted to a key we hold but no
-    passphrase was supplied. Raises WrongPassphrase on a bad passphrase, and
-    MessageError on missing keys / corrupt data. A bad or unverifiable signature
-    is NOT an exception — it is reported via MessageResult.signature_valid."""
+    Raises NeedPassphrase if encrypted to a key we hold but no passphrase given,
+    WrongPassphrase on a bad passphrase, MessageError on missing keys / corruption.
+    A bad/unverifiable signature is reported via MessageResult.signature_valid."""
 
-    info = inspect_message(raw)
+    info = inspectMessage(raw)
     outer = info._outer
-    payload = _unb64(outer["payload"])
+    X = _unb64(outer["payload"])
 
-    result = MessageResult(
-        was_encrypted=info.encrypted,
-        was_compressed=info.compressed,
-        was_signed=info.signed,
-        sym_algo=info.sym_algo,
-        recipient_key_id=info.recipient_key_id,
-    )
+    result = MessageResult(was_encrypted=info.encrypted, was_compressed=info.compressed,
+                           was_signed=info.signed, sym_algo=info.sym_algo,
+                           recipient_key_id=info.recipient_key_id)
 
-    # --- decrypt ----------------------------------------------------------- #
+    # 1. decrypt (optional)
     if info.encrypted:
-        session = outer.get("session_key") or {}
-        rid = session.get("recipient_key_id")
-        priv_entry = km.private_ring.get(rid)
+        recipient_key_id, encrypted_Ks, iv, algo = parseSessionKeyComponent(outer)
+        priv_entry = km.private_ring.get(recipient_key_id)
         if not priv_entry:
-            raise MessageError(
-                f"This message is encrypted to key {rid}, which is not in your "
-                "private key ring. You cannot decrypt it.")
+            raise MessageError(f"This message is encrypted to key {recipient_key_id}, "
+                               "which is not in your private key ring.")
         if passphrase is None:
-            raise NeedPassphrase(rid, priv_entry.user_id)
-        private_key = km.get_private_key(rid, passphrase)        # may raise WrongPassphrase
-        session_key = K.rsa_decrypt(private_key, _unb64(session["enc_session_key"]))
-        iv = _unb64(outer["iv"])
+            raise NeedPassphrase(recipient_key_id, priv_entry.user_id)
+        PRb = loadPrivateKey(km, recipient_key_id, passphrase)     # may raise WrongPassphrase
+        Ks = decryptSessionKey(PRb, encrypted_Ks)
         try:
-            payload = ciphers.symmetric_decrypt(outer["sym_algo"], session_key, iv, payload)
+            X = decryptMessage(Ks, iv, X, algo)
         except Exception as exc:
             raise MessageError(f"Decryption failed.\n({exc})")
 
-    # --- decompress -------------------------------------------------------- #
+    # 2. decompress (optional)
     if info.compressed:
         try:
-            payload = compression.decompress(payload)
+            X = decompress(X)
         except Exception:
             raise MessageError("Decompression failed — the file is corrupt or was "
                                "not decrypted correctly.")
 
-    # --- parse inner block ------------------------------------------------- #
+    # 3. parse the inner block
     try:
-        inner = json.loads(payload)
-        msg = inner["message"]
-        data = _unb64(msg["data"])
+        messageComponent, signatureComponent = parseSignedMessage(X)
+        message = _unb64(messageComponent["data"])
     except Exception as exc:
         raise MessageError(f"Could not read the message body.\n({exc})")
 
-    result.message_bytes = data
-    result.filename = msg.get("filename", "message")
-    result.msg_timestamp = msg.get("timestamp", "")
+    result.message_bytes = message
+    result.filename = messageComponent.get("filename", "message")
+    result.msg_timestamp = messageComponent.get("timestamp", "")
 
-    # --- verify signature -------------------------------------------------- #
-    if info.signed and "signature" in inner:
-        sig = inner["signature"]
-        signer_id = sig.get("signer_key_id")
-        result.signer_key_id = signer_id
-        result.sig_timestamp = sig.get("timestamp", "")
-        signed_data = data + sig.get("timestamp", "").encode("utf-8")
-        digest = hashlib.sha1(signed_data).digest()
-        leading_ok = digest[:2].hex().upper() == sig.get("leading_two_octets")
-
-        pub_entry = _find_public_key(km, signer_id)
-        if pub_entry is None:
+    # 4. verify signature (optional)
+    if info.signed and signatureComponent:
+        signer_key_id = signatureComponent.get("signer_key_id")
+        result.signer_key_id = signer_key_id
+        result.sig_timestamp = signatureComponent.get("timestamp", "")
+        PUa, signer_user_id = getSenderPublicKey(km, signer_key_id)
+        if PUa is None:
             result.signature_valid = None
-            result.signer_note = (f"Signer key {signer_id} is not in your keyring, "
+            result.signer_note = (f"Signer key {signer_key_id} is not in your keyring, "
                                   "so the signature could not be verified.")
         else:
-            public_key = K.load_public_key_from_pem(pub_entry.public_key.encode("utf-8"))
-            valid = leading_ok and K.rsa_verify(public_key, _unb64(sig["signature"]), signed_data)
-            result.signature_valid = bool(valid)
-            result.signer_user_id = pub_entry.user_id
+            result.signature_valid = verifySignature(PUa, signatureComponent, message)
+            result.signer_user_id = signer_user_id
 
     return result

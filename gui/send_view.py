@@ -184,11 +184,11 @@ class SendView(ctk.CTkScrollableFrame):
                                  "That passphrase does not unlock the signing key.", "error"); return
 
         try:
-            blob = M.create_message(
+            blob = M.pgpSend(
                 self.km, data, filename,
-                sign=sign, signer_key_id=signer_key_id, signer_passphrase=signer_passphrase,
-                encrypt=enc, recipient_key_id=recipient_key_id, sym_algo=self.algo_menu.get(),
-                compress=comp, radix64_armor=r64)
+                signRequired=sign, signerKeyId=signer_key_id, passphrase=signer_passphrase,
+                confidentialityRequired=enc, recipientKeyId=recipient_key_id,
+                symAlgo=self.algo_menu.get(), compressRequired=comp, radix64Required=r64)
         except WrongPassphrase:
             dlg.show_message(self.app, "Wrong passphrase", "Could not unlock the signing key.", "error"); return
         except PGPError as exc:

@@ -179,8 +179,7 @@ class App(ctk.CTk):
         source = self.km.private_ring if ring == "private" else self.km.public_ring
         entry = source.get(key_id)
         if entry:
-            self.set_status(f"Selected: {entry.user_id}   •   Key ID {entry.key_id}   "
-                            f"•   fingerprint {entry.fingerprint}")
+            self.set_status(f"Selected: {entry.user_id}   •   Key ID {entry.key_id}")
 
     def _require_selection(self, tree, what):
         key_id = self._selected(tree)
@@ -243,7 +242,7 @@ class App(ctk.CTk):
         if not path:
             return
         try:
-            self.km.export_public_key(key_id, path, ring=ring)
+            self.km.export_public_key(key_id, path)
         except PGPError as exc:
             dlg.show_message(self, "Error", str(exc), "error"); return
         self.set_status(f"Exported public key to {path}")
