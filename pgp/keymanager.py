@@ -15,7 +15,7 @@ class KeyManager:
         self.loadRings()
         
     @staticmethod
-    def computeKeyId(publicKey) -> str:
+    def computeKeyId(publicKey) -> int:
         """keyId = PU mod 2^64 (least significant 8 bytes of the public key)."""
         n = publicKey.public_numbers().n
         return n % (2**64)
@@ -83,3 +83,11 @@ def symmetricDecryptForKeys(key: bytes, ciphertext: bytes) -> bytes:
 def deserializePublicKey(pemString: str):
     """PEM string -> public key object."""
     return serialization.load_pem_public_key(pemString.encode())
+
+def serializePublicKey(publicKey) -> str:
+    """Public key object -> PEM string (for ring storage)."""
+    pemBytes = publicKey.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return pemBytes.decode()
