@@ -1,4 +1,5 @@
-slanje poruke:
+
+slanje poruke:
 
 1. loadPrivateKey(IDa, passphrase) - na osnovu IDa se iz private key ringa izvlaci enkriptovana vrednost privatnog kljuca, od korisnika se trazi unos passphrase (koji se hesuje; zbog fiksne duzine kljuca koji se koristi u dekripcionim algo), te se ekriptovana vrednost privatnog kljuca dekriptuje koristeci hesovanu vrednost passphrase -> PRa
 
@@ -40,130 +41,130 @@ primanje poruke:
 
 Building blocks
 H(data)
-SHA-1 hash → 160-bit digest
-Returns: digest
+   SHA-1 hash → 160-bit digest
+   Returns: digest
 EP(PR, data)
-Public-key encryption (RSA) — used for signing with private key
-Returns: E[PR, data]
+   Public-key encryption (RSA) — used for signing with private key
+   Returns: E[PR, data]
 DP(PU, data)
-Public-key decryption (RSA) — used for verifying signature with public key
-Returns: decrypted data
+   Public-key decryption (RSA) — used for verifying signature with public key
+   Returns: decrypted data
 EP(PU, Ks)
-Public-key encryption of session key with recipient's public key
-Returns: E[PUb, Ks]
+   Public-key encryption of session key with recipient's public key
+   Returns: E[PUb, Ks]
 DP(PR, encryptedKs)
-Public-key decryption to recover session key
-Returns: Ks
+   Public-key decryption to recover session key
+   Returns: Ks
 EC(Ks, data)
-Symmetric encryption (CAST-128 / IDEA / 3DES, CFB mode)
-Returns: E[Ks, data]
+   Symmetric encryption (CAST-128 / IDEA / 3DES, CFB mode)
+   Returns: E[Ks, data]
 DC(Ks, data)
-Symmetric decryption
-Returns: decrypted data
+   Symmetric decryption
+   Returns: decrypted data
 Z(data)
-ZIP compression
-Returns: compressed data
+   ZIP compression
+   Returns: compressed data
 Z_inv(data)
-ZIP decompression (Z⁻¹)
-Returns: decompressed data
+   ZIP decompression (Z⁻¹)
+   Returns: decompressed data
 R64(data)
-Radix-64 (Base64) encoding + CRC
-Returns: ASCII text
+   Radix-64 (Base64) encoding + CRC
+   Returns: ASCII text
 R64_inv(text)
-Radix-64 decoding (R64⁻¹)
-Returns: binary data
+   Radix-64 decoding (R64⁻¹)
+   Returns: binary data
 RNG()
-Random number generator (CAST-128 based, ANSI X12.17)
-Produces unpredictable 128-bit Ks
-Returns: Ks
+   Random number generator (CAST-128 based, ANSI X12.17)
+   Produces unpredictable 128-bit Ks
+   Returns: Ks
 
 KEY RING & KEY MANAGEMENT
 computeKeyID(PU)
-Key ID = PU mod 2^64 (least significant 64 bits)
-Returns: keyID
+   Key ID = PU mod 2^64 (least significant 64 bits)
+   Returns: keyID
 generateKeyPair(passphrase, userID)
-Generates PU / PR pair (RSA/DSS)
-Computes H(passphrase) → CAST-128 key
-Encrypts PR with that key: E(H(passphrase), PR)
-Stores entry in Private Key Ring
-Returns: keyID
+   Generates PU / PR pair (RSA/DSS)
+   Computes H(passphrase) → CAST-128 key
+   Encrypts PR with that key: E(H(passphrase), PR)
+   Stores entry in Private Key Ring
+   Returns: keyID
 loadPrivateKey(passphrase, keyID)
-Send side: index Private Key Ring by userID/keyID
-Computes H(passphrase) → CAST-128 key
-Decrypts (DC) the encrypted private key → PRa
-Returns: PRa
+   Send side: index Private Key Ring by userID/keyID
+   Computes H(passphrase) → CAST-128 key
+   Decrypts (DC) the encrypted private key → PRa
+   Returns: PRa
 loadRecipientPrivateKey(passphrase, keyID)
-Receive side: index Private Key Ring by receiver's Key ID
-Same decryption flow → PRb
-Returns: PRb
+   Receive side: index Private Key Ring by receiver's Key ID
+   Same decryption flow → PRb
+   Returns: PRb
 getRecipientPublicKey(ID_B)
-Select PUb from Public Key Ring by recipient user ID
-Returns: PUb, keyID
+   Select PUb from Public Key Ring by recipient user ID
+   Returns: PUb, keyID
 getSenderPublicKey(senderKeyID)
-Select PUa from Public Key Ring by sender's Key ID
-Returns: PUa
+   Select PUa from Public Key Ring by sender's Key ID
+   Returns: PUa
 
 Key Ring storage structures
 PrivateKeyRing
-Fields per entry: Timestamp, KeyID*, PublicKey, EncryptedPrivateKey = E(H(Pi), PRi), UserID*
-Indexable by KeyID or UserID
+   Fields per entry: Timestamp, KeyID*, PublicKey, EncryptedPrivateKey = E(H(Pi), PRi), UserID*
+   Indexable by KeyID or UserID
 PublicKeyRing
-Fields per entry: Timestamp, KeyID*, PublicKey, OwnerTrust, UserID*, KeyLegitimacy, Signatures, SignatureTrust
-Indexable by KeyID or UserID
+   Fields per entry: Timestamp, KeyID*, PublicKey, OwnerTrust, UserID*, KeyLegitimacy, Signatures, SignatureTrust
+   Indexable by KeyID or UserID
 
 📤 SENDING — generateMessage (Slide 27 diagram)
 buildSignature(M, PRa, keyID_a)
-Constructs the signature component (slide 22 structure):
-timestamp of signature
-digest = H(M || timestamp)
-signature = EP(PRa, digest) → E[PRa, H(M)]
-leadingTwoOctets of digest
-keyID of sender's PUa
-Returns: signatureComponent
+   # Constructs the signature component (slide 22 structure):
+   timestamp of signature
+   digest = H(M || timestamp)
+   signature = EP(PRa, digest) → E[PRa, H(M)]
+   leadingTwoOctets of digest
+   keyID of sender's PUa
+   Returns: signatureComponent
 buildMessageComponent(M)
-data, filename, creationTime
-Returns: messageComponent
+   data, filename, creationTime
+   Returns: messageComponent
 concat(signatureComponent, messageComponent)
-The || block
-Returns: signature + message
+   The || block
+   Returns: signature + message
 compress(signedMessage)
-X ← Z(X) — compress signature + message
-Returns: compressed X
+   X ← Z(X) — compress signature + message
+   Returns: compressed X
 generateSessionKey()
-Calls RNG() → Ks
-Returns: Ks
+   Calls RNG() → Ks
+   Returns: Ks
 encryptMessage(Ks, compressedX)
-EC(Ks, X) — symmetric encrypt
-Returns: E[Ks, X]
+   EC(Ks, X) — symmetric encrypt
+   Returns: E[Ks, X]
 encryptSessionKey(PUb, Ks)
-EP(PUb, Ks) — encrypt session key
-Returns: E[PUb, Ks]
+   EP(PUb, Ks) — encrypt session key
+   Returns: E[PUb, Ks]
 buildSessionKeyComponent(encryptedKs, keyID_b)
-keyID of recipient's PUb + E[PUb, Ks]
-Returns: sessionKeyComponent
+   keyID of recipient's PUb + E[PUb, Ks]
+   Returns: sessionKeyComponent
 assembleOutput(sessionKeyComponent, encryptedMessage)
-The final || block → X
-Returns: combined X
+   The final || block → X
+   Returns: combined X
 radix64encode(X)
-X ← R64(X)
-Returns: ASCII Output
+   X ← R64(X)
+   Returns: ASCII Output
 segment(output, maxSize = 50000)
-Splits into mail-safe segments (after R64)
-Session key + signature appear only in first segment
-Returns: segments[]
+   Splits into mail-safe segments (after R64)
+   Session key + signature appear only in first segment
+   Returns: segments[]
 🎯 Top-Level Send Orchestrator
 pgpSend(M, ID_A, ID_B, passphrase, signRequired, confidentialityRequired)
-PRa ← loadPrivateKey(passphrase, keyID_a)
-If signRequired: X ← concat(buildSignature(M, PRa, keyID_a), buildMessageComponent(M))
-X ← compress(X) (Z)
-If confidentialityRequired:
-Ks ← generateSessionKey()
-X ← encryptMessage(Ks, X) (EC)
-PUb ← getRecipientPublicKey(ID_B)
-X ← assembleOutput(buildSessionKeyComponent(encryptSessionKey(PUb, Ks), keyID_b), X)
-X ← radix64encode(X) (R64)
-segments ← segment(X)
-Returns: segments
+   PRa ← loadPrivateKey(passphrase, keyID_a)
+   If signRequired: X ← concat(buildSignature(M, PRa, keyID_a), buildMessageComponent(M))
+   X ← compress(X) (Z)
+   If confidentialityRequired:
+   Ks ← generateSessionKey()
+   X ← encryptMessage(Ks, X) (EC)
+   PUb ← getRecipientPublicKey(ID_B)
+   X ← assembleOutput(buildSessionKeyComponent(encryptSessionKey(PUb, Ks), keyID_b), X)
+   X ← radix64encode(X) (R64)
+   segments ← segment(X)
+   Returns: segments
 
 📥 RECEIVING — receiveMessage (Slide 28 diagram)
 reassembleSegments(segments)

@@ -24,6 +24,8 @@ import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from pgp.keymanager import KeyManager
+
 from . import keys as K
 from . import ciphers
 from . import compression
@@ -49,30 +51,51 @@ def _unb64(text: str) -> bytes:
 # SEND substeps                                                               #
 # =========================================================================== #
 
-def loadPrivateKey(km, key_id, passphrase):
+@dataclass
+class HeaderOptions:
+    sign: bool=False
+    signerKeyId: str=""
+    passphrase: str=""
+    encrypt: bool=False
+    recipientKeyId: str="" 
+    symAlgo: str="AES-128"
+    compress: bool=False
+    radix64: bool=False
+    iv: bytes | None = None
+    sessionKeyComponent: dict | None = None
+
+def getPrivateKey(km: KeyManager, key_id: str, passphrase: str):
     """Decrypt our private key from the private ring (asks the passphrase)."""
-    return km.get_private_key(key_id, passphrase)          # may raise WrongPassphrase
+    key = km.get_private_key(key_id, passphrase)
+    print(f"Using private key {key_id} for signing.")
+    return key
 
 
 def buildMessageComponent(message: bytes, filename: str) -> dict:
     """The message component: the data itself + its name + a timestamp."""
-    return {"filename": filename, "timestamp": _now(), "data": _b64(message)}
+    msgComponent = {"filename": filename, "timestamp": _now(), "data": _b64(message)}
+    print(f"Built message component with filename '{filename}' and timestamp {msgComponent['timestamp']}.")
+    print(f"Message data (Base64-encoded): {msgComponent['data'][:60]}... (truncated)")
+    return msgComponent
 
 
 def hashMessage(message: bytes, timestamp: str) -> bytes:
     """H(M || timestamp) -> 160-bit SHA-1 digest (timestamp bound in for anti-replay)."""
-    return hashlib.sha1(message + timestamp.encode("utf-8")).digest()
+    hash = hashlib.sha1(message + timestamp.encode("utf-8")).digest()
+    print(f"Computed hash of message + timestamp: {hash.hex()}")
+    return hash
 
 
-def buildSignature(message: bytes, private_key, signer_key_id: str) -> dict:
+def buildSignature(message: bytes, privateKey, signerKeyId: str) -> dict:
     """The signature component: sign H(M||ts) with the sender's private key."""
     timestamp = _now()
     digest = hashMessage(message, timestamp)
-    signature = K.rsaSign(private_key, message + timestamp.encode("utf-8"))   # EP(PRa, H(M))
+    signature = K.rsaSign(privateKey, message + timestamp.encode("utf-8"))
+    print(f"Signature: {_b64(signature)}")
     return {
         "timestamp": timestamp,
-        "signer_key_id": signer_key_id,
-        "leading_two_octets": digest[:2].hex().upper(),
+        "signerKeyId": signerKeyId,
+        "leadingTwoOctets": digest[:2].hex().upper(),
         "signature": _b64(signature),
     }
 
@@ -82,6 +105,7 @@ def concat(signatureComponent, messageComponent) -> bytes:
     inner = {"message": messageComponent}
     if signatureComponent is not None:
         inner["signature"] = signatureComponent
+    print(f"Concatenated inner block with message and {'signature' if signatureComponent else 'no signature'}.")
     return json.dumps(inner).encode("utf-8")
 
 
@@ -92,12 +116,14 @@ def compress(data: bytes) -> bytes:
 
 def generateSessionKey(algo: str) -> bytes:
     """A fresh random one-time session key Ks for this message."""
-    return ciphers.generateSessionKey(algo)
+    Ks = ciphers.generateSessionKey(algo)
+    print(f"Generated session key: {_b64(Ks)}")
+    return Ks
 
 
-def encryptMessage(session_key: bytes, data: bytes, algo: str):
+def encryptMessage(algorithm: str, sessionKey: bytes, data: bytes):
     """EC(Ks, data) — symmetric encrypt. Returns (iv, ciphertext)."""
-    return ciphers.symmetricEncrypt(algo, session_key, data)
+    return ciphers.symmetricEncrypt(algorithm, sessionKey, data)
 
 
 def getRecipientPublicKey(km, key_id):
@@ -105,7 +131,9 @@ def getRecipientPublicKey(km, key_id):
     entry = km.public_ring.get(key_id) or km.private_ring.get(key_id)
     if not entry:
         raise KeyNotFound(f"Recipient key {key_id} is not in your keyring.")
-    return K.loadPublicKeyFromPem(entry.public_key.encode("utf-8"))
+    PUb = K.loadPublicKeyFromPem(entry.public_key.encode("utf-8"))
+    print(f"PUb for recipient {key_id} loaded.")
+    return PUb
 
 
 def encryptSessionKey(public_key, session_key: bytes) -> bytes:
@@ -113,24 +141,23 @@ def encryptSessionKey(public_key, session_key: bytes) -> bytes:
     return K.rsaEncrypt(public_key, session_key)
 
 
-def buildSessionKeyComponent(encrypted_session_key: bytes, recipient_key_id: str) -> dict:
+def buildSessionKeyComponent(encryptedSessionKey: bytes, recipientKeyId: str) -> dict:
     """The session-key component: recipient's Key ID + E[PUb, Ks]."""
-    return {"recipient_key_id": recipient_key_id,
-            "enc_session_key": _b64(encrypted_session_key)}
+    return {"recipientKeyId": recipientKeyId,
+            "encryptedSessionKey": _b64(encryptedSessionKey)}
 
 
-def assembleOutput(*, signed, compressed, encrypted, radix64Required,
-                   sym_algo, iv, sessionKeyComponent, payload) -> bytes:
+def assembleOutput(payload, options: HeaderOptions) -> bytes:
     """The final outer container (JSON) describing what was applied + the payload."""
     outer = {
         "version": VERSION,
-        "signed": bool(signed),
-        "compressed": bool(compressed),
-        "encrypted": bool(encrypted),
-        "radix64": bool(radix64Required),
-        "sym_algo": sym_algo if encrypted else None,
-        "iv": _b64(iv) if iv is not None else None,
-        "session_key": sessionKeyComponent,
+        "signed": bool(options.sign),
+        "compressed": bool(options.compress),
+        "encrypted": bool(options.encrypt),
+        "radix64": bool(options.radix64),
+        "symAlgo": options.symAlgo if options.encrypt else None,
+        "iv": _b64(options.iv) if options.encrypt and options.iv is not None else None,
+        "sessionKeyComponent": options.sessionKeyComponent if options.encrypt else None,
         "payload": _b64(payload),
     }
     return json.dumps(outer, indent=2).encode("utf-8")
@@ -144,42 +171,51 @@ def radix64encode(data: bytes) -> bytes:
 # --------------------------------------------------------------------------- #
 # Send orchestrator                                                           #
 # --------------------------------------------------------------------------- #
-def pgpSend(km, message: bytes, filename: str, *,
-            signRequired=False, signerKeyId=None, passphrase=None,
-            confidentialityRequired=False, recipientKeyId=None, symAlgo="AES-128",
-            compressRequired=False, radix64Required=False) -> bytes:
+def pgpSend(keyManager: KeyManager, message: bytes, filename: str, destPath: str, options: dict) -> bool:
     """Build a PGP message file from `message`. Returns the file bytes."""
-
-    # 1. signature (optional) + message
+    sign = options.get("sign", False)
+    encrypt = options.get("encrypt", False)
+    compress = options.get("compress", False)
+    radix64 = options.get("radix64", False)
+    algorithmId = 0
+    
     X = concat(None, buildMessageComponent(message, filename))
-    if signRequired:
-        PRa = loadPrivateKey(km, signerKeyId, passphrase)
-        X = concat(buildSignature(message, PRa, signerKeyId),
-                   buildMessageComponent(message, filename))
 
-    # 2. compress (optional)
-    if compressRequired:
+    if sign:
+        PRa = keyManager.getPrivateKey(options["signerKeyId"], options["passphrase"])
+        signatureBlock = buildSignature(message, PRa, options["signerKeyId"])
+        X = concat(signatureBlock, X)
+
+    if compress:
         X = compress(X)
 
-    # 3. encrypt (optional) + session-key component
-    iv = None
-    sessionKeyComponent = None
-    if confidentialityRequired:
-        Ks = generateSessionKey(symAlgo)
-        iv, X = encryptMessage(Ks, X, symAlgo)
-        PUb = getRecipientPublicKey(km, recipientKeyId)
-        sessionKeyComponent = buildSessionKeyComponent(encryptSessionKey(PUb, Ks), recipientKeyId)
+    if encrypt:
+        algorithm = options["algorithm"]
+        
+        Ks = generateSessionKey(algorithm)
+        iv, X = encryptMessage(algorithm, Ks, X)
+        
+        PUb = keyManager.getRecipientPublicKey(options["recipientKeyId"])
+        enc_Ks = encryptSessionKey(PUb, Ks)
+        
+        sessionKeyBlock = buildSessionKeyComponent(enc_Ks, options["recipientKeyId"], algorithm)
+        X = concat(sessionKeyBlock, X)
+        
+        algorithmId = getAlgorithmId(algorithm)
 
-    # 4. assemble the outer container
-    X = assembleOutput(signed=signRequired, compressed=compressRequired,
-                       encrypted=confidentialityRequired, radix64Required=radix64Required,
-                       sym_algo=symAlgo, iv=iv, sessionKeyComponent=sessionKeyComponent,
-                       payload=X)
-
-    # 5. radix-64 (optional)
-    if radix64Required:
+    if radix64:
         X = radix64encode(X)
-    return X
+        
+        
+    headerBytes = fs.encodeHeader(
+        signed = sign,
+        encrypted = encrypt,
+        compressed = compress,
+        radix64 = radix64,
+        algorithmId = algorithmId,
+    )
+    fs.serializeToFIle(X, headerBytes, destPath)
+    return True
 
 
 # =========================================================================== #
