@@ -4,7 +4,8 @@ import hashlib
 import os
 import zlib
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
+from cryptography.hazmat.decrepit.ciphers.modes import CFB
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.utils import Prehashed
@@ -65,7 +66,7 @@ def symmetricEncrypt(algorithm: str, sessionKey: bytes, data: bytes) -> bytes:
     iv = os.urandom(blockSize)
     
     cipherAlg = buildCipherAlgorithm(algorithm, sessionKey)
-    cipher = Cipher(cipherAlg, modes.CFB(iv))
+    cipher = Cipher(cipherAlg, CFB(iv))
     encryptor = cipher.encryptor()
     
     cipherText = encryptor.update(data) + encryptor.finalize()

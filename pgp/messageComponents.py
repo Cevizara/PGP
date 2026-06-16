@@ -1,6 +1,6 @@
 import struct
 
-import cryptoPrimitives as cp
+from . import cryptoPrimitives as cp
 
 def packField(data: bytes) -> bytes:
    """Prefix a byte field with its 4-byte length."""

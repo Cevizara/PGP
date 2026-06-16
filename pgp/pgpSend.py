@@ -1,10 +1,10 @@
-from pgp.keyManager import KeyManager
-import fileSerializer as fs
-import messageComponents as mc
-import cryptoPrimitives as cp
+from . import keyRing as kr
+from . import fileSerializer as fs
+from . import messageComponents as mc
+from . import cryptoPrimitives as cp
 
 
-def pgpSend(keyManager: KeyManager, message: bytes, filename: str, destPath: str, options: dict) -> bool:
+def pgpSend(keyManager: kr.KeyManager, message: bytes, filename: str, destPath: str, options: dict) -> bool:
     """
     Send orchestrator. Flow: 
         sign -> compress -> encrypt -> radix64
@@ -45,7 +45,7 @@ def pgpSend(keyManager: KeyManager, message: bytes, filename: str, destPath: str
         enc_Ks = cp.rsaEncrypt(PUb, Ks)
         
         sessionKeyBlock = mc.buildSessionKeyComponent(enc_Ks, options["recipientKeyId"], algorithm)
-        X = sessionKeyBlock + x
+        x = sessionKeyBlock + x
         
         algorithmId = cp.algorithmToId(algorithm)
 
