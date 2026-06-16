@@ -4,3 +4,7 @@ __pycache__/
 keystore/
 keystore_*/
 _smoke_*.py
+_docx.txt
+*.pdf
+*.bat
+*.docx
