@@ -38,6 +38,31 @@ def rsaEncrypt(publicKey, sessionKey: bytes) -> bytes:
             label=None
         )
     )
+    
+def rsaDecrypt(privateKey, encryptedSessionKey: bytes) -> bytes:
+    """Decrypt session key with recipient's private key."""
+    return privateKey.decrypt(
+        encryptedSessionKey,
+        padding.OAEP(
+            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA1(),
+            label=None
+        )
+    )
+    
+def rsaVerify(publicKey, signature: bytes, digest: bytes) -> bool:
+    """Verify a prehashed SHA-1 digest signature."""
+    from cryptography.exceptions import InvalidSignature
+    try:
+        publicKey.verify(
+            signature,
+            digest,
+            padding.PKCS1v15(),
+            Prehashed(hashes.SHA1())
+        )
+        return True
+    except InvalidSignature:
+        return False
 
 # ------------------------------------------------------
 # Symmetric encryption
@@ -72,6 +97,19 @@ def symmetricEncrypt(algorithm: str, sessionKey: bytes, data: bytes) -> bytes:
     cipherText = encryptor.update(data) + encryptor.finalize()
     return iv + cipherText
 
+def symmetricDecrypt(algorithm: str, sessionKey: bytes, data: bytes) -> bytes:
+    """DC -- CFB mode. IV is prepended to data."""
+    blockSize = getBlockSize(algorithm)
+    iv = data[:blockSize]
+    cipherText = data[blockSize:]
+    
+    cipherAlg = buildCipherAlgorithm(algorithm, sessionKey)
+    cipher = Cipher(cipherAlg, CFB(iv))
+    decryptor = cipher.decryptor()
+    
+    return decryptor.update(cipherText) + decryptor.finalize()
+
+
 # ------------------------------------------------------
 # Session key generation
 # ------------------------------------------------------
@@ -91,13 +129,20 @@ def compress(data: bytes) -> bytes:
     """ZIP compression."""
     return zlib.compress(data)
 
+def decompress(data: bytes) -> bytes:
+    """ZIP decompression."""
+    return zlib.decompress(data)
+
 # ------------------------------------------------------
-# Radix64 encoding
+# Radix64
 # ------------------------------------------------------
 def radix64Encode(data: bytes) -> bytes:
-    """Base64 encode (R64) -> ASCII bytes."""
+    """Base64 encode into ASCII bytes."""
     return base64.b64encode(data)
 
+def radix64Decode(data: bytes) -> bytes:
+    """Base64 decode into binary."""
+    return base64.b64decode(data)
 
 # ------------------------------------------------------
 # Algorithm Id mapping
@@ -111,6 +156,16 @@ def algorithmToId(algorithm: str) -> int:
     if algorithm not in mapping:
         raise ValueError(f"Unsupported algorithm {algorithm}")
     return mapping[algorithm]
+
+def idToAlgorithm(algorithmId: int) -> str:
+    """Map algorithm ID -> algorithm name."""
+    mapping = {
+        1: "AES128",
+        2: "TripleDES"
+    }
+    if algorithmId not in mapping:
+        raise ValueError(f"Unsupported algorithmId {algorithmId}")
+    return mapping[algorithmId]
 
 
 # ------------------------------------------------------

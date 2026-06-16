@@ -13,7 +13,7 @@ def pgpSend(keyManager: kr.KeyManager, message: bytes, filename: str, destPath: 
         "encrypt": bool,
         "compress": bool,
         "radix64": bool,
-        "signerKeyId": int, # required if sign
+        "senderKeyId": int, # required if sign
         "passphrase": str, # required if sign
         "recipientKeyId": int, # required if encrypt
         "algorithm": str, # required if encrypt ("AES128" | "TripleDES")
@@ -28,8 +28,8 @@ def pgpSend(keyManager: kr.KeyManager, message: bytes, filename: str, destPath: 
     x = mc.buildMessageComponent(message, filename)
 
     if sign:
-        PRa = keyManager.unlockPrivateKey(options["signerKeyId"], options["passphrase"])
-        signatureBlock = mc.buildSignature(message, PRa, options["signerKeyId"])
+        PRa = keyManager.unlockPrivateKey(options["senderKeyId"], options["passphrase"])
+        signatureBlock = mc.buildSignature(message, PRa, options["senderKeyId"])
         x = signatureBlock + x
 
     if compress:

@@ -35,7 +35,7 @@ def main():
       "encrypt": True,
       "compress": True,
       "radix64": True,
-      "signerKeyId": senderKeyId,
+      "senderKeyId": senderKeyId,
       "passphrase": "alicePassword123",
       "recipientKeyId": recipientKeyId,
       "algorithm": "AES128"
