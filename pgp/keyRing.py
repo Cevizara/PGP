@@ -71,6 +71,14 @@ class KeyManager:
             raise KeyError(f"Public key for {keyId} not found")
         return deserializePublicKey(entry["publicKey"])
     
+    def getUserId(self, keyId: int) -> str:
+        """Returns userId for a given keyId"""
+        entry = self.publicRing.getById(keyId)
+        if entry is None:
+            entry = self.privateRing.getById(keyId)
+        if entry is None:
+            raise KeyError(f"Unknown sender with keyId {keyId}")
+        return entry["userId"]
 
     def loadRings(self):
         """Load key rings from disk, or initialize empty if not found."""

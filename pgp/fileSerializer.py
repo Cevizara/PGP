@@ -25,3 +25,33 @@ def serializeToFile(payload: bytes, headerBytes: bytes, filePath: str):
    """Write header + payload to file."""
    with open(filePath, 'wb') as f:
       f.write(headerBytes + payload)
+      
+def readFile(filePath: str) -> bytes:
+   """Read the whole file."""
+   with open(filePath, 'rb') as f:
+      return f.read()
+   
+def decodeHeader(headerBytes: bytes):
+   """
+   Read header and split it from the payload
+   Returns (flagsDict, payload).
+   This is how receiver recognizes which packets are present.
+   """
+   magic = headerBytes[:4]
+   if magic != MAGIC:
+      raise ValueError("Not a valid PGP file")
+   
+   flagsByte = headerBytes[4]
+   algorithmId = headerBytes[5]
+   payload = headerBytes[6:]
+   
+   flags = {
+      'signed': bool(flagsByte & FLAG_SIGNED),
+      'encrypted': bool(flagsByte & FLAG_ENCRYPTED),
+      'compressed': bool(flagsByte & FLAG_COMPRESSED),
+      'radix64': bool(flagsByte & FLAG_RADIX64),
+      "algorithmId": algorithmId
+   }
+   
+   
+   return flags, payload
