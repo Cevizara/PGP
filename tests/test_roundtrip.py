@@ -25,7 +25,7 @@ def test_full_roundtrip():
     message = b"test message round trip"
     options = {
         "sign": True, "encrypt": True, "compress": True, "radix64": True,
-        "signKeyId": aliceId, "password": "alicepw",
+        "senderKeyId": aliceId, "passphrase": "alicepw",
         "recipientKeyId": bobId, "algorithm": "AES128",
     }
 

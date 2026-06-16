@@ -7,7 +7,7 @@ from pgp import pgpSend as sender
 from pgp import pgpReceive as receiver
 
 
-def test_wrong_password():
+def test_wrong_passphrase():
     tmpDir = tempfile.mkdtemp()
     km = kr.KeyManager(
         privateRingPath=os.path.join(tmpDir, "priv.json"),
