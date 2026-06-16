@@ -5,6 +5,7 @@ import os
 import zlib
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms
+from cryptography.hazmat.decrepit.ciphers import algorithms as decrepit_algorithms
 from cryptography.hazmat.decrepit.ciphers.modes import CFB
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -72,7 +73,7 @@ def buildCipherAlgorithm(algorithm: str, sessionKey: bytes):
     if algorithm == "AES128":
         return algorithms.AES(sessionKey)
     elif algorithm == "TripleDES":
-        return algorithms.TripleDES(sessionKey)
+        return decrepit_algorithms.TripleDES(sessionKey)
     else:
         raise ValueError(f"Unsupported algorithm {algorithm}")
 

@@ -9,3 +9,5 @@ _docx.txt
 *.bat
 *.docx
 output/
+.pytest_cache/
+.vscode/

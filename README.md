@@ -309,3 +309,11 @@ services (plus wrong-passphrase and corruption cases) during development.
   structures already have the fields; the logic/UI are future work. Not among
   the 5 required features.
 - **Segmentation** of very large messages — described in the slides, optional here.
+
+## Testing
+
+Run 
+
+```py
+python -m pytest tests/ -v
+```
