@@ -9,8 +9,8 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from pgp import message as M
-from pgp import ciphers
+from pgp.pgpSend import pgpSend
+from pgp import cryptoPrimitives as cp
 from pgp.errors import PGPError, WrongPassphrase
 from . import dialogs as dlg
 
@@ -78,8 +78,8 @@ class SendView(ctk.CTkScrollableFrame):
 
         row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=(0, 4))
         ctk.CTkLabel(row, text="algorithm:", text_color="#9aa3b2").pack(side="left", padx=(210, 6))
-        self.algo_menu = ctk.CTkSegmentedButton(row, values=ciphers.ALGORITHM_NAMES)
-        self.algo_menu.set(ciphers.ALGORITHM_NAMES[0])
+        self.algo_menu = ctk.CTkSegmentedButton(row, values=cp.ALGORITHM_NAMES)
+        self.algo_menu.set(cp.ALGORITHM_NAMES[0])
         self.algo_menu.pack(side="left")
 
         # Compress + Radix64
@@ -184,7 +184,7 @@ class SendView(ctk.CTkScrollableFrame):
                                  "That passphrase does not unlock the signing key.", "error"); return
 
         try:
-            blob = M.pgpSend(
+            blob = pgpSend(
                 self.km, data, filename,
                 signRequired=sign, signerKeyId=signer_key_id, passphrase=signer_passphrase,
                 confidentialityRequired=enc, recipientKeyId=recipient_key_id,

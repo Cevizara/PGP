@@ -2,13 +2,11 @@
 
 We use the `cryptography` library for the RSA primitive (allowed by the task
 rules). Everything here is stateless — it only deals with key objects and PEM
-bytes; storage and passphrase protection live in other modules.
+bytes; storage and passphrase protection live in other modules. The RSA
+sign/verify/encrypt/decrypt primitives live in `cryptoPrimitives`.
 """
 
-import cryptography
-
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
     PublicFormat,
@@ -58,34 +56,3 @@ def loadPublicKeyFromPem(data: bytes):
 
 def loadPrivateKeyFromPem(data: bytes, pw: str | None = None):
     return load_pem_private_key(data, password=pw.encode("utf-8") if pw else None)
-
-
-#RSA operations
-#Session key/message encryption/decryption
-def rsaEncrypt(publicKey, data: bytes) -> bytes:
-    return publicKey.encrypt(
-        data,
-        padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),
-                     algorithm=hashes.SHA256(), label=None),
-    )
-
-
-def rsaDecrypt(private_key, data: bytes) -> bytes:
-    return private_key.decrypt(
-        data,
-        padding.OAEP(mgf=padding.MGF1(hashes.SHA256()),
-                     algorithm=hashes.SHA256(), label=None),
-    )
-
-
-#Signature generation
-def rsaSign(privateKey, data: bytes) -> bytes:
-    return privateKey.sign(data, padding.PKCS1v15(), hashes.SHA1())
-
-#Signature verification
-def rsaVerify(publicKey, signature: bytes, data: bytes) -> bool:
-    try:
-        publicKey.verify(signature, data, padding.PKCS1v15(), hashes.SHA1())
-        return True
-    except Exception:
-        return False

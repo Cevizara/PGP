@@ -11,7 +11,8 @@ from tkinter import filedialog
 
 import customtkinter as ctk
 
-from pgp import message as M
+from pgp.pgpReceive import pgpReceive
+from pgp.fileSerializer import inspectMessage
 from pgp.errors import PGPError, WrongPassphrase, NeedPassphrase, MessageError
 from . import dialogs as dlg
 
@@ -65,7 +66,7 @@ class ReceiveView(ctk.CTkScrollableFrame):
 
         # 1) inspect (no secrets needed)
         try:
-            info = M.inspectMessage(raw)
+            info = inspectMessage(raw)
         except MessageError as exc:
             self._fail(str(exc)); return
 
@@ -82,7 +83,7 @@ class ReceiveView(ctk.CTkScrollableFrame):
         passphrase = None
         while True:
             try:
-                result = M.pgpReceive(self.km, raw, passphrase=passphrase)
+                result = pgpReceive(self.km, raw, passphrase=passphrase)
                 break
             except NeedPassphrase as need:
                 res = dlg.PassphraseDialog(

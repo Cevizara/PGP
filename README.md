@@ -46,17 +46,16 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 > On this machine the bare `python` / `py` names are shadowed by the Windows
-> Store stub. The real interpreter lives at
-> `C:\Users\<user>\AppData\Local\Programs\Python\Python313\python.exe`.
-> The `.venv` already points at the right one.
+> Store stub. The `.venv` points at the real interpreter.
 
 ### Run
 ```powershell
 .\.venv\Scripts\python.exe main.py
 ```
-or just double-click **`run.bat`**.
+(or double-click a `run.bat` launcher if you make one — `main.py` also accepts an
+optional keystore folder, see §10).
 
-Key rings are created on first use under **`keystore/`** (see §7).
+Key rings are created on first use under **`keystore/`** (see §6).
 
 ---
 
@@ -68,35 +67,42 @@ logic testable without a screen and lets two people work without colliding.
 
 ```
 Projekat/
-├── main.py                 # entry point: builds the App and runs the loop
-├── run.bat                 # launches main.py with the venv Python
+├── main.py                  # entry point: builds the App and runs the loop
 ├── requirements.txt
 │
-├── pgp/                    # ── PURE LOGIC, no GUI imports ──
-│   ├── keys.py             # RSA: generate, PEM I/O, Key ID, fingerprint,
-│   │                       #      rsa_encrypt/decrypt (EP/DP) & sign/verify
-│   ├── crypto_utils.py     # protect the private key at rest (passphrase → AES)
-│   ├── ciphers.py          # symmetric session ciphers: AES-128 & 3DES (CFB)
-│   ├── compression.py      # ZIP (zlib) compress/decompress
-│   ├── radix64.py          # ASCII armor (Base64 + CRC-24), like OpenPGP
-│   ├── models.py           # PrivateKeyEntry / PublicKeyEntry (ring rows)
-│   ├── keyrings.py         # the two rings + JSON persistence
-│   ├── keymanager.py       # FACADE used by the GUI for all key operations
-│   ├── message.py          # the message engine: create / inspect / process
-│   └── errors.py           # typed exceptions the GUI reacts to
+├── pgp/                     # ── PURE LOGIC, no GUI imports ──
+│   ├── cryptoPrimitives.py  # stateless crypto toolbox: hashing, RSA sign/verify/
+│   │                        #   encrypt/decrypt, symmetric ciphers (AES-128 & 3DES,
+│   │                        #   CFB), zlib compression, radix-64
+│   ├── keys.py              # RSA key generation, PEM import/export, Key ID
+│   ├── crypto_utils.py      # protect the private key at rest (passphrase → AES-128-CBC)
+│   ├── keyrings.py          # the two rings + JSON persistence
+│   ├── keymanager.py        # FACADE the GUI uses for all key operations
+│   ├── models.py            # PrivateKeyEntry / PublicKeyEntry (ring rows)
+│   ├── messageComponents.py # build/parse the packets: message, signature, session-key
+│   ├── fileSerializer.py    # the outer JSON container + inspectMessage + radix-64 armor
+│   ├── pgpSend.py           # SEND orchestrator (sign → compress → encrypt → radix-64)
+│   ├── pgpReceive.py        # RECEIVE orchestrator (the mirror) + signature verification
+│   └── errors.py            # typed exceptions the GUI reacts to
 │
-├── gui/                    # ── customtkinter UI ──
-│   ├── app.py              # main window, tabs, key-management wiring
-│   ├── send_view.py        # Send tab
-│   ├── receive_view.py     # Receive tab
-│   ├── dialogs.py          # all modal dialogs (generate, passphrase, details…)
-│   └── widgets.py          # the dark-themed table helper
+├── gui/                     # ── customtkinter UI ──
+│   ├── app.py               # main window, tabs, key-management wiring
+│   ├── send_view.py         # Send tab
+│   ├── receive_view.py      # Receive tab
+│   ├── dialogs.py           # all modal dialogs (generate, passphrase, details…)
+│   └── widgets.py           # dark-themed table helper + entry formatters
 │
-└── keystore/               # created at runtime: private_keyring.json + public_keyring.json
+└── keystore/                # created at runtime: private_ring.json + public_ring.json
 ```
 
-**Dependency direction:** `gui/*` → `pgp.keymanager` / `pgp.message` → the rest
-of `pgp/*`. Nothing in `pgp/` imports from `gui/`.
+**Dependency direction:** `gui/*` → `pgp.keymanager` / `pgp.pgpSend` /
+`pgp.pgpReceive` / `pgp.fileSerializer` → the rest of `pgp/*`. Nothing in `pgp/`
+imports from `gui/`.
+
+The message engine is split so each file has one job: **`messageComponents`**
+knows the packet formats, **`fileSerializer`** knows the file (outer container),
+and **`pgpSend`/`pgpReceive`** are thin orchestrators that read as the pipeline
+itself — one optional step per `if`.
 
 ---
 
@@ -110,7 +116,7 @@ of `pgp/*`. Nothing in `pgp/` imports from `gui/`.
 This is the "digital envelope": encrypt the big message with a fast one-time key,
 then encrypt just that little key with the recipient's RSA public key.
 
-### Send pipeline (order matters!) — `pgp/message.py::create_message`
+### Send pipeline (order matters!) — `pgp/pgpSend.py::pgpSend`
 ```
 M (message)
   → SIGN      : digest = SHA-1(data ‖ sig_timestamp); signature = RSA_sign(PR_sender, …)
@@ -122,10 +128,10 @@ The textbook order is **sign → compress → encrypt → radix-64**, and we fol
 exactly. (Sign before compress so we can store/verify the original; encrypt after
 compress so there's less redundancy to attack.)
 
-### Receive pipeline (the mirror) — `pgp/message.py::process_message`
+### Receive pipeline (the mirror) — `pgp/pgpReceive.py::pgpReceive`
 ```
 file
-  → un-RADIX-64 : if armored, de-armor (and check CRC-24)
+  → un-RADIX-64 : if armored, de-armor  (fileSerializer.inspectMessage)
   → DECRYPT     : find our private key by recipient Key ID → ask passphrase →
                   Ks = RSA_decrypt(PR_us, encKs) → AES/3DES_CFB decrypt body
   → DECOMPRESS  : un-ZIP
@@ -147,9 +153,10 @@ a signature uses the sender's **public** key (no passphrase).
 Our own format, but faithful to the slide *"struktura poruke"* (session-key /
 signature / message components). The file is a JSON **outer container** (UTF-8);
 binary fields are Base64 so they fit in JSON. If radix-64 is on, the whole
-container is additionally ASCII-armored.
+container is additionally ASCII-armored. `fileSerializer` reads/writes the outer
+container; `messageComponents` builds/parses the inner packets.
 
-**Outer container**
+**Outer container** (written by `fileSerializer.assembleContainer`)
 ```jsonc
 {
   "version": "PGP-ZP/1.0",
@@ -187,7 +194,7 @@ from the rings.
 
 Two JSON files in `keystore/` (created on first use):
 
-**`private_keyring.json`** — your own pairs. Fields per the slide *Private Key Ring*:
+**`private_ring.json`** — your own pairs. Fields per the slide *Private Key Ring*:
 ```jsonc
 {
   "key_id": "5E586EC780847F77",   // low 64 bits of the RSA modulus (PU mod 2^64)
@@ -198,15 +205,14 @@ Two JSON files in `keystore/` (created on first use):
      "algo": "AES-128-CBC", "s2k": "salted-sha1",
      "salt": "<b64>", "iv": "<b64>", "ciphertext": "<b64>"
   },
-  "timestamp": "...", "fingerprint": "<SHA-1 of public key>"
+  "timestamp": "..."
 }
 ```
 The private key is **never** stored in the clear — it is AES-encrypted with a key
-derived from the passphrase (see §8).
+derived from the passphrase (see §7, "Private key at rest").
 
-**`public_keyring.json`** — contacts' public keys. Same shape minus the private
-key, plus `owner_trust` / `key_legitimacy` / `signatures` fields that are
-**reserved for a future trust model** (not part of the 5 required features).
+**`public_ring.json`** — contacts' public keys. The same shape, minus the
+`enc_private_key` field.
 
 > Note: the folder is inside OneDrive on this machine, so the rings sync to the
 > cloud. The private key is encrypted, so this is acceptable — but security then
@@ -219,15 +225,14 @@ key, plus `owner_trust` / `key_legitimacy` / `signatures` fields that are
 
 | Decision | What we do | Why |
 |----------|-----------|-----|
-| **Key ID** | low 64 bits of the RSA modulus `n` (`PU mod 2^64`) | Matches the course slides / Stallings. (RFC 4880 V4 uses the low 64 bits of the SHA-1 *fingerprint* instead — we don't.) |
-| **Fingerprint** | SHA-1 over the DER public key | For out-of-band human verification (read it over the phone). Display only. |
+| **Key ID** | low 64 bits of the RSA modulus `n` (`PU mod 2^64`), as 16 hex digits | Matches the course slides / Stallings. (RFC 4880 V4 uses the low 64 bits of the SHA-1 *fingerprint* instead — we don't.) |
 | **Private key at rest** | salted SHA-1 → 128-bit key → AES-128-CBC | Slide says "SHA-1 of passphrase → 128-bit key → symmetric encrypt"; salt follows RFC 4880 S2K advice; AES-128 is one of our two algorithms. |
 | **Symmetric algorithms** | **AES-128** and **3DES** (two of the four allowed) | Both are clean in `cryptography`. Cast5/IDEA would add library pain for no extra credit. |
-| **Cipher mode** | **CFB** | The slide specifies 64-bit CFB for PGP confidentiality. CFB is stream-style → no padding. |
+| **Cipher mode** | **CFB** | The slide specifies CFB for PGP confidentiality. CFB is stream-style → no padding. |
 | **Session-key encryption** | RSA-OAEP (SHA-256) | Modern, secure padding for `EP(PUb, Ks)`. Session keys (16/24 B) fit even in RSA-1024. |
 | **Signature** | RSA PKCS#1 v1.5 over SHA-1 | This is exactly "encrypt the digest with the private key" (`E(PRa, H(M))`). SHA-1 is required by the assignment. |
 | **Compression** | `zlib` (DEFLATE) | The DEFLATE algorithm used by ZIP, which the slide names. |
-| **Radix-64** | Base64 + CRC-24 + BEGIN/END armor | Mirrors OpenPGP ASCII armor; the CRC is the slide's "radix-64 adds a CRC". |
+| **Radix-64** | Base64 → ASCII | The slide's radix-64 step. (OpenPGP additionally wraps it in BEGIN/END armor with a CRC-24; we keep just the Base64 for simplicity — easy to add if required.) |
 
 **Academic caveats to mention if asked:** 1024-bit RSA and SHA-1 are weak by
 modern standards but are required by the course; a single-pass salted SHA-1 S2K
@@ -244,8 +249,9 @@ the textbook PGP.
   `export_public_key` / `export_keypair`; UI handlers `on_import_*` / `on_export_*`.
 - **Display rings** → tables in `gui/app.py` (`refresh_private`/`refresh_public`),
   full details in `gui/dialogs.py::KeyDetailsDialog`.
-- **Send** → `pgp/message.py::create_message`; UI in `gui/send_view.py`.
-- **Receive** → `pgp/message.py::inspect_message` + `process_message`;
+- **Send** → `pgp/pgpSend.py::pgpSend` (building the packets/container in
+  `messageComponents` + `fileSerializer`); UI in `gui/send_view.py`.
+- **Receive** → `pgp/fileSerializer.py::inspectMessage` + `pgp/pgpReceive.py::pgpReceive`;
   UI in `gui/receive_view.py`.
 
 ---
@@ -256,29 +262,28 @@ The rules forbid "one does logic, the other does GUI". Split by **feature
 vertical** instead — each person owns the logic *and* its UI:
 
 - **Person A — Keys & Send:** `pgp/keys.py`, `crypto_utils.py`, `keyrings.py`,
-  `keymanager.py`, the build half of `message.py`, `gui/app.py` (key tabs),
-  `gui/send_view.py`.
-- **Person B — Ciphers & Receive:** `pgp/ciphers.py`, `compression.py`,
-  `radix64.py`, the receive half of `message.py`, `gui/receive_view.py`,
-  `gui/dialogs.py`.
+  `keymanager.py`, `pgpSend.py`, `gui/app.py` (key tabs), `gui/send_view.py`.
+- **Person B — Ciphers & Receive:** `pgp/cryptoPrimitives.py`,
+  `messageComponents.py`, `fileSerializer.py`, `pgpReceive.py`,
+  `gui/receive_view.py`, `gui/dialogs.py`.
 
-Both share `models.py` / `errors.py` and review each other's `message.py` half
-(it's the seam where send and receive meet).
+Both share `models.py` / `errors.py` and review each other's use of
+`messageComponents.py` / `fileSerializer.py` (the seam where send and receive meet).
 
 ---
 
 ## 10. How to demonstrate (recommended: two separate users)
 
-The keystore folder is selectable, so you can run **two instances side by side**,
-each a real separate user with its own key ring. This shows all five requirements
-naturally. The window title and header show which keystore each instance uses.
+`main.py` takes an optional keystore folder (first CLI argument, or the
+`PGP_KEYSTORE` env var; default `./keystore`), so you can run **two instances
+side by side**, each a real separate user with its own key ring. The window
+title and header show which keystore each instance uses.
 
-**Launch both** (double-click, or run from a terminal):
+**Launch two users:**
+```powershell
+.\.venv\Scripts\python.exe main.py keystore_alice
+.\.venv\Scripts\python.exe main.py keystore_bob
 ```
-demo_alice.bat      ->  main.py keystore_alice
-demo_bob.bat        ->  main.py keystore_bob
-```
-(Or generally: `.venv\Scripts\python.exe main.py <folder>`, or set `PGP_KEYSTORE`.)
 
 **Walkthrough:**
 1. **Alice** window: *My Keys → Generate* her pair (passphrase). **Bob** window: same.
@@ -299,13 +304,15 @@ demo_bob.bat        ->  main.py keystore_bob
 > private key and Alice's public key by Key ID. Use this only for a fast sanity check.
 
 The crypto engine has been exercised across **all 16 combinations** of the four
-services (plus wrong-passphrase and corruption cases) during development.
+services (plus wrong-passphrase and corruption cases). A full automated `pytest`
+suite is maintained on the `dev` branch.
 
 ---
 
 ## 11. Roadmap / not yet done
 
-- **Trust model** (owner trust, key legitimacy, signatures on keys) — the data
-  structures already have the fields; the logic/UI are future work. Not among
-  the 5 required features.
+- **Trust model** (owner trust, key legitimacy, signatures on keys) — future work,
+  not among the 5 required features.
 - **Segmentation** of very large messages — described in the slides, optional here.
+- **Radix-64 CRC-24 + BEGIN/END armor** — we do plain Base64; the OpenPGP CRC
+  wrapper could be added if the graders want the full armor.
