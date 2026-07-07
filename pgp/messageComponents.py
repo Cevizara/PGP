@@ -1,13 +1,3 @@
-"""The PGP message *components* (packets): how each piece is built and parsed.
-
-  message   packet : {filename, timestamp, data}
-  signature packet : {timestamp, signer_key_id, leading_two_octets, signature}
-  session-key packet: {recipient_key_id, enc_session_key}
-
-Binary fields are Base64 so they fit inside the JSON container. This module has
-no notion of files or orchestration — it just turns bytes into packets and back.
-"""
-
 import json
 import base64
 from datetime import datetime, timezone
@@ -27,29 +17,25 @@ def unb64(text: str) -> bytes:
     return base64.b64decode(text)
 
 
-# ------------------------------------------------------------------ #
-# message packet                                                     #
-# ------------------------------------------------------------------ #
+#message packet
 def buildMessageComponent(message: bytes, filename: str) -> dict:
-    """The data itself + its name + a timestamp."""
+    #the data itself + its name + a timestamp
     return {"filename": filename, "timestamp": now(), "data": b64(message)}
 
 
-# ------------------------------------------------------------------ #
-# signature packet                                                   #
-# ------------------------------------------------------------------ #
+#signature packet
 def hashMessage(message: bytes, timestamp: str) -> bytes:
-    """H(M || timestamp) -> SHA-1 digest (timestamp bound in for anti-replay)."""
+    #hash(M || timestamp) -> SHA-1 digest (anti replay zbog timestampa)
     return CryptoPrimitives.sha1(message + timestamp.encode("utf-8"))
 
 
 def buildSignature(message: bytes, privateKey, signerKeyId: str) -> dict:
-    """Sign H(M||ts) with the sender's private key."""
+    #sign hash(M || timestamp) with the sender private key
     timestamp = now()
     digest = hashMessage(message, timestamp)
     signature = CryptoPrimitives.rsaSign(privateKey, message + timestamp.encode("utf-8"))
-    first_two_bytes = digest[:2]                     # prva dva bajta hesa
-    leading_two_octets = first_two_bytes.hex().upper()   # kao hex string, velika slova
+    first_two_bytes = digest[:2]                     # prva dva bajta
+    leading_two_octets = first_two_bytes.hex().upper() 
     return {
         "timestamp": timestamp,
         "signer_key_id": signerKeyId,
@@ -59,10 +45,10 @@ def buildSignature(message: bytes, privateKey, signerKeyId: str) -> dict:
 
 
 def verifySignature(publicKey, signatureComponent: dict, message: bytes) -> bool:
-    """Recompute H(M||ts) and check it against the signature with the sender's key."""
+    #recompute hash(M || timestamp) and check it against the signature with the sender's key
     timestamp = signatureComponent.get("timestamp", "")
     digest = hashMessage(message, timestamp)
-    first_two_bytes = digest[:2]                     # prva dva bajta ponovo izračunatog hesa
+    first_two_bytes = digest[:2]                     # prva dva bajta ponovo izracunatog hash-a
     leading_two_octets = first_two_bytes.hex().upper()
     if leading_two_octets != signatureComponent.get("leading_two_octets"):
         return False
@@ -70,11 +56,9 @@ def verifySignature(publicKey, signatureComponent: dict, message: bytes) -> bool
                         message + timestamp.encode("utf-8"))
 
 
-# ------------------------------------------------------------------ #
-# inner block  (message packet [+ signature packet])                 #
-# ------------------------------------------------------------------ #
+#inner block  (message packet [+ signature packet])
 def packInner(messageComponent: dict, signatureComponent: dict | None = None) -> bytes:
-    """Serialize the signature (optional) + message block to bytes."""
+    #serialize the signature (optional) + message block to bytes
     inner = {"message": messageComponent}
     if signatureComponent is not None:
         inner["signature"] = signatureComponent
@@ -82,22 +66,20 @@ def packInner(messageComponent: dict, signatureComponent: dict | None = None) ->
 
 
 def unpackInner(inner_bytes: bytes):
-    """Split the inner block into (messageComponent, signatureComponent or None)."""
+    #split the inner block into (messageComponent, signatureComponent or None)
     inner = json.loads(inner_bytes)
     return inner["message"], inner.get("signature")
 
 
-# ------------------------------------------------------------------ #
-# session-key packet                                                 #
-# ------------------------------------------------------------------ #
+#session-key packet
 def buildSessionKeyComponent(encryptedSessionKey: bytes, recipientKeyId: str) -> dict:
-    """Recipient's Key ID + E[PUb, Ks]."""
+    #recipient's Key ID + E[PUb, Ks]
     return {"recipient_key_id": recipientKeyId,
             "enc_session_key": b64(encryptedSessionKey)}
 
 
 def parseSessionKeyComponent(outer: dict):
-    """Extract (recipientKeyId, encryptedKs, iv, algorithm) from the container."""
+    #extract (recipientKeyId, encryptedKs, iv, algorithm) from the container
     session = outer.get("session_key") or {}
     return (session.get("recipient_key_id"),
             unb64(session["enc_session_key"]),

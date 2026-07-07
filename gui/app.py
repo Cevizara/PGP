@@ -50,12 +50,6 @@ class App(ctk.CTk):
         super().__init__()
         self.storage_dir = storage_dir or DEFAULT_STORAGE_DIR
         self.title("PGP App")
-        # window / taskbar icon
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "pgp.ico")
-        try:
-            self.iconbitmap(icon_path)
-        except Exception:
-            pass
         self.geometry("980x640")
         self.minsize(860, 560)
         self.configure(fg_color=theme.WINDOW)
@@ -233,7 +227,7 @@ class App(ctk.CTk):
         if not data:
             return
         try:
-            entry = self.km.generate_keypair(
+            entry = self.km.generateKeyPair(
                 data["name"], data["email"], data["key_size"], data["passphrase"])
         except PGPError as exc:
             dlg.show_message(self, "Error", str(exc), "error"); return
@@ -251,7 +245,7 @@ class App(ctk.CTk):
                               f"Permanently delete the key pair for {entry.user_id}?\n"
                               "This cannot be undone."):
             return
-        self.km.delete_private_key(key_id)
+        self.km.deletePrivateKey(key_id)
         self.refresh_private()
         self.set_status(f"Deleted key {key_id}.")
 
@@ -269,7 +263,7 @@ class App(ctk.CTk):
         if not path:
             return
         try:
-            self.km.export_public_key(key_id, path)
+            self.km.exportPublicKey(key_id, path)
         except PGPError as exc:
             dlg.show_message(self, "Error", str(exc), "error"); return
         self.set_status(f"Exported public key to {path}")
@@ -282,7 +276,7 @@ class App(ctk.CTk):
         data = dlg.ExportPairDialog(self).show()
         if not data:
             return
-        if not self.km.verify_passphrase(key_id, data["keyring_passphrase"]):
+        if not self.km.verifyPassphrase(key_id, data["keyring_passphrase"]):
             dlg.show_message(self, "Wrong passphrase",
                              "The key-ring passphrase is incorrect.", "error"); return
         entry = self.km.private_ring.get(key_id)
@@ -293,8 +287,8 @@ class App(ctk.CTk):
         if not path:
             return
         try:
-            self.km.export_keypair(key_id, data["keyring_passphrase"], path,
-                                   export_password=data["export_password"] or None)
+            self.km.exportKeyPair(key_id, data["keyring_passphrase"], path,
+                                  exportPassword=data["export_password"] or None)
         except WrongPassphrase:
             dlg.show_message(self, "Wrong passphrase",
                              "The key-ring passphrase is incorrect.", "error"); return
@@ -315,8 +309,8 @@ class App(ctk.CTk):
         if not data:
             return
         try:
-            entry = self.km.import_keypair(path, data["pem_password"], data["name"],
-                                           data["email"], data["keyring_passphrase"])
+            entry = self.km.importKeyPair(path, data["pem_password"], data["name"],
+                                          data["email"], data["keyring_passphrase"])
         except PGPError as exc:
             dlg.show_message(self, "Import failed", str(exc), "error"); return
         self.refresh_private()
@@ -336,7 +330,7 @@ class App(ctk.CTk):
         if not data:
             return
         try:
-            entry = self.km.import_public_key(path, data["name"], data["email"])
+            entry = self.km.importPublicKey(path, data["name"], data["email"])
         except PGPError as exc:
             dlg.show_message(self, "Import failed", str(exc), "error"); return
         self.refresh_public()
@@ -351,6 +345,6 @@ class App(ctk.CTk):
         if not dlg.ask_yes_no(self, "Delete contact key",
                               f"Remove the public key for {entry.user_id}?"):
             return
-        self.km.delete_public_key(key_id)
+        self.km.deletePublicKey(key_id)
         self.refresh_public()
         self.set_status(f"Deleted public key {key_id}.")

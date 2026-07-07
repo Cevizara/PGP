@@ -19,17 +19,17 @@ from cryptography.hazmat.primitives.padding import PKCS7
 from .errors import WrongPassphrase
 
 
-def derive_key(passphrase: str, salt: bytes) -> bytes:
+def deriveKey(passphrase: str, salt: bytes) -> bytes:
     """Salted S2K: SHA-1(salt || passphrase) truncated to 128 bits."""
     digest = hashlib.sha1(salt + passphrase.encode("utf-8")).digest()
     return digest[:16]
 
 
-def encrypt_private_key(private_pem: bytes, passphrase: str) -> dict:
+def encryptPrivateKey(private_pem: bytes, passphrase: str) -> dict:
     """Encrypt the PEM bytes of a private key. Returns a JSON-serializable blob."""
     salt = os.urandom(16)
     iv = os.urandom(16)
-    key = derive_key(passphrase, salt)
+    key = deriveKey(passphrase, salt)
 
     padder = PKCS7(128).padder()
     padded = padder.update(private_pem) + padder.finalize()
@@ -46,12 +46,12 @@ def encrypt_private_key(private_pem: bytes, passphrase: str) -> dict:
     }
 
 
-def decrypt_private_key(blob: dict, passphrase: str) -> bytes:
+def decryptPrivateKey(blob: dict, passphrase: str) -> bytes:
     """Reverse of `encrypt_private_key`. Raises WrongPassphrase on bad password."""
     salt = base64.b64decode(blob["salt"])
     iv = base64.b64decode(blob["iv"])
     ciphertext = base64.b64decode(blob["ciphertext"])
-    key = derive_key(passphrase, salt)
+    key = deriveKey(passphrase, salt)
 
     decryptor = Cipher(algorithms.AES(key), modes.CBC(iv)).decryptor()
     try:

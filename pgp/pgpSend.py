@@ -10,7 +10,7 @@ from .errors import KeyNotFound
 
 
 def recipientPublicKey(km, keyId):
-    """PUb — recipient's public key from the public ring (or our own keys)."""
+    #PUb — recipient's public key from the public ring (or our own keys)
     entry = km.public_ring.get(keyId) or km.private_ring.get(keyId)
     if not entry:
         raise KeyNotFound(f"Recipient key {keyId} is not in your keyring.")
@@ -22,14 +22,14 @@ def pgpSend(km, message: bytes, filename: str, *,
             confidentialityRequired=False, recipientKeyId=None, symAlgo="AES-128",
             compressRequired=False, radix64Required=False) -> bytes:
 
-    print(message)
+    # print(message)
     # message packet (+ signature packet if signing)
     signature = None
     if signRequired:
-        privateKey = km.get_private_key(signerKeyId, passphrase)     # asks the passphrase
+        privateKey = km.getPrivateKey(signerKeyId, passphrase)     # asks the passphrase
         signature = MessageComponents.buildSignature(message, privateKey, signerKeyId)
     payload = MessageComponents.packInner(MessageComponents.buildMessageComponent(message, filename), signature)
-    print(payload)
+    # print(payload)
 
     # compress
     if compressRequired:

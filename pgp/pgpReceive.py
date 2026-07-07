@@ -1,12 +1,3 @@
-"""Receive orchestrator — reverse the applied services and verify the signature.
-
-The body reads as the reverse pipeline: one optional step per `if`:
-
-    un-radix-64  ->  decrypt  ->  decompress  ->  verify
-
-(De-armoring + reading the flags happens in fileSerializer.inspectMessage.)
-"""
-
 from dataclasses import dataclass
 
 from . import keys as K
@@ -35,7 +26,7 @@ class MessageResult:
 
 
 def senderPublicKey(km, keyId):
-    """PUa — sender's public key (contacts or our own). (key, user_id) or (None, None)."""
+    #PUa — sender's public key (contacts or our own). (key, user_id) or (None, None)
     entry = km.public_ring.get(keyId) or km.private_ring.get(keyId)
     if not entry:
         return None, None
@@ -43,12 +34,6 @@ def senderPublicKey(km, keyId):
 
 
 def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
-    """Reverse every applied stage and verify the signature.
-
-    Raises NeedPassphrase if encrypted to a key we hold but no passphrase given,
-    WrongPassphrase on a bad passphrase, MessageError on missing keys / corruption.
-    A bad/unverifiable signature is reported via MessageResult.signature_valid."""
-
     info = fs.inspectMessage(raw)          # de-armors + reads the flags
     payload = fs.payloadBytes(info)
     result = MessageResult(was_encrypted=info.encrypted, was_compressed=info.compressed,
@@ -64,14 +49,14 @@ def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
                                "which is not in your private key ring.")
         if passphrase is None:
             raise NeedPassphrase(recipientKeyId, privEntry.user_id)
-        privateKey = km.get_private_key(recipientKeyId, passphrase)     # may raise WrongPassphrase
+        privateKey = km.getPrivateKey(recipientKeyId, passphrase)     # may raise WrongPassphrase
         sessionKey = cp.rsaDecrypt(privateKey, encryptedKs)
         try:
             payload = cp.symmetricDecrypt(algo, sessionKey, iv, payload)
         except Exception as exc:
             raise MessageError(f"Decryption failed.\n({exc})")
 
-    # decompress
+    #decompress
     if info.compressed:
         try:
             payload = cp.decompressData(payload)
@@ -79,18 +64,18 @@ def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
             raise MessageError("Decompression failed — the file is corrupt or was "
                                "not decrypted correctly.")
 
-    # read the inner block
+    #read the inner block
     try:
         messageComponent, signatureComponent = mc.unpackInner(payload)
         message = mc.unb64(messageComponent["data"])
-    except Exception as exc:
-        raise MessageError(f"Could not read the message body.\n({exc})")
+    except Exception:
+        raise MessageError(f"Could not read the message body")
 
     result.message_bytes = message
     result.filename = messageComponent.get("filename", "message")
     result.msg_timestamp = messageComponent.get("timestamp", "")
 
-    # verify
+    #verify
     if info.signed and signatureComponent:
         signerKeyId = signatureComponent.get("signer_key_id")
         result.signer_key_id = signerKeyId

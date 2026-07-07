@@ -1,11 +1,3 @@
-"""RSA key operations: generation, PEM import/export, Key ID.
-
-We use the `cryptography` library for the RSA primitive (allowed by the task
-rules). Everything here is stateless — it only deals with key objects and PEM
-bytes; storage and passphrase protection live in other modules. The RSA
-sign/verify/encrypt/decrypt primitives live in `cryptoPrimitives`.
-"""
-
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -19,8 +11,8 @@ from cryptography.hazmat.primitives.serialization import (
 
 
 
-# Generate a fresh RSA key pair. Returns (private_key, public_key)
-# e is default value for public_exponent
+#generate a fresh RSA key pair. Returns (private_key, public_key)
+#e is default value for public_exponent (65537)
 def generateRsaPairOfKeys(size: int):
     if size != 1024 and size != 2048:
         raise ValueError("Key size must be 1024 or 2048 bits.")
@@ -29,12 +21,10 @@ def generateRsaPairOfKeys(size: int):
     return private_key, public_key
 
 
-# Compute the key ID of a public key (Low 64 bits of the RSA modulus n)
+#compute the key ID of a public key (Low 64 bits of the RSA modulus n)
 def computeKeyId(publicKey) -> str:
     n = publicKey.public_numbers().n
     return f"{n % (1 << 64):016X}"
-
-
 
 #PEM serialization
 def publicKeyToPem(publicKey) -> str:
@@ -55,4 +45,8 @@ def loadPublicKeyFromPem(data: bytes):
 
 
 def loadPrivateKeyFromPem(data: bytes, pw: str | None = None):
-    return load_pem_private_key(data, password=pw.encode("utf-8") if pw else None)
+    if pw:
+        password_bytes = pw.encode("utf-8")
+    else:
+        password_bytes = None
+    return load_pem_private_key(data, password=password_bytes)

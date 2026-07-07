@@ -1,10 +1,3 @@
-"""The two key rings and their persistence.
-
-Each ring is a list of entries saved as a JSON file in the keystore directory.
-JSON is chosen for transparency (you can open the file and inspect the
-structure) — the private key field inside is still encrypted, so it is safe.
-"""
-
 import os
 import json
 
@@ -40,7 +33,7 @@ class Ring:
         return None
 
     def add(self, entry) -> None:
-        # Replace any existing entry with the same Key ID (re-import / regenerate).
+        #replace any existing entry with the same Key ID (re-import / regenerate).
         if self.get(entry.key_id):
             self.entries = [e for e in self.entries if e.key_id != entry.key_id]
         self.entries.append(entry)

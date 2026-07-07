@@ -1,13 +1,3 @@
-"""The on-disk file format: the outer JSON container and how to read it.
-
-  Outer: flags (signed/compressed/encrypted/radix64), sym_algo, iv,
-         session_key {recipient_key_id, enc_session_key}, payload
-
-`assembleContainer` writes it, `inspectMessage` reads the header back (without
-any passphrase), and `armor`/inspect handle the optional radix-64 wrapping of
-the whole container.
-"""
-
 import json
 from dataclasses import dataclass
 
@@ -18,7 +8,7 @@ from .errors import MessageError
 
 @dataclass
 class MessageInfo:
-    """What the file declares about itself — readable without any passphrase."""
+    #what the file declares about itself — readable without any passphrase
     radix64: bool = False
     encrypted: bool = False
     signed: bool = False
@@ -30,7 +20,7 @@ class MessageInfo:
 
 def assembleContainer(*, signed, compressed, encrypted, radix64,
                       symAlgo, iv, sessionKeyComponent, payload) -> bytes:
-    """The final outer container (JSON) describing what was applied + the payload."""
+    #the final outer container (JSON) describing what was applied + the payload
     outer = {
         "signed": bool(signed),
         "compressed": bool(compressed),
@@ -58,7 +48,7 @@ def inspectMessage(raw: bytes) -> MessageInfo:
         raise MessageError("Not a valid PGP message file (bad encoding).")
 
     try:
-        # A non-armored file is raw JSON; an armored file is Base64 of that JSON.
+        #A non-armored file is raw JSON; an armored file is Base64 of that JSON.
         try:
             outer = json.loads(text)
             is_armored = False
@@ -84,5 +74,5 @@ def inspectMessage(raw: bytes) -> MessageInfo:
 
 
 def payloadBytes(info: MessageInfo) -> bytes:
-    """The raw payload bytes carried by the container."""
+    #the raw payload bytes carried by the container
     return MessageComponents.unb64(info.outer["payload"])

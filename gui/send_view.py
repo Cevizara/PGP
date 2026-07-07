@@ -185,7 +185,7 @@ class SendView(ctk.CTkFrame):
             if not res:
                 return
             signer_passphrase = res["passphrase"]
-            if not self.km.verify_passphrase(signer_key_id, signer_passphrase):
+            if not self.km.verifyPassphrase(signer_key_id, signer_passphrase):
                 dlg.show_message(self.app, "Wrong passphrase",
                                  "That passphrase does not unlock the signing key.", "error"); return
 
