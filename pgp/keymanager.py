@@ -100,7 +100,7 @@ class KeyManager:
         return entry
 
     def exportPublicKey(self, key_id, path) -> None:
-        #export the public key from either ring - checks private ring first
+        #export the public key from publiv/private ring ,checks private ring first
         entry = self.private_ring.get(key_id) or self.public_ring.get(key_id)
         if not entry:
             raise KeyNotFound(key_id)
@@ -108,7 +108,7 @@ class KeyManager:
             f.write(entry.public_key)
 
     def exportKeyPair(self, key_id, keyring_passphrase, path, exportPassword=None) -> None:
-        #unlocking the private key here enforces "every access needs a passphrase"
+        #unlocking the private key here enforces ;every access needs a passphrase"
         private_key = self.getPrivateKey(key_id, keyring_passphrase) 
         pem = K.privateKeyToPem(private_key, exportPassword or None)
         with open(path, "wb") as f:

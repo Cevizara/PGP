@@ -17,7 +17,6 @@ class MessageResult:
     was_signed: bool = False
     sym_algo: str | None = None
     recipient_key_id: str | None = None
-    # signature outcome: True = valid, False = invalid, None = could not check
     signature_valid: object = None
     signer_key_id: str | None = None
     signer_user_id: str | None = None
@@ -34,13 +33,13 @@ def senderPublicKey(km, keyId):
 
 
 def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
-    info = fs.inspectMessage(raw)          # de-armors + reads the flags
+    info = fs.inspectMessage(raw)          #de-armors and reads the flags
     payload = fs.payloadBytes(info)
     result = MessageResult(was_encrypted=info.encrypted, was_compressed=info.compressed,
                            was_signed=info.signed, sym_algo=info.sym_algo,
                            recipient_key_id=info.recipient_key_id)
 
-    # decrypt
+    #decrypt
     if info.encrypted:
         recipientKeyId, encryptedKs, iv, algo = mc.parseSessionKeyComponent(info.outer)
         privEntry = km.private_ring.get(recipientKeyId)
@@ -49,12 +48,12 @@ def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
                                "which is not in your private key ring.")
         if passphrase is None:
             raise NeedPassphrase(recipientKeyId, privEntry.user_id)
-        privateKey = km.getPrivateKey(recipientKeyId, passphrase)     # may raise WrongPassphrase
+        privateKey = km.getPrivateKey(recipientKeyId, passphrase)    
         sessionKey = cp.rsaDecrypt(privateKey, encryptedKs)
         try:
             payload = cp.symmetricDecrypt(algo, sessionKey, iv, payload)
-        except Exception as exc:
-            raise MessageError(f"Decryption failed.\n({exc})")
+        except Exception:
+            raise MessageError(f"Decryption failed")
 
     #decompress
     if info.compressed:

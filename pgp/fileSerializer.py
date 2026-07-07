@@ -8,7 +8,7 @@ from .errors import MessageError
 
 @dataclass
 class MessageInfo:
-    #what the file declares about itself — readable without any passphrase
+    #basic info, nothing sensitive
     radix64: bool = False
     encrypted: bool = False
     signed: bool = False
@@ -35,13 +35,13 @@ def assembleContainer(*, signed, compressed, encrypted, radix64,
 
 
 def armor(container: bytes) -> bytes:
-    """R64 — Base64-armor the whole container into ASCII."""
+    #armor the whole container into ASCII
     return CryptoPrimitives.radix64encode(container).encode("ascii")
 
 
 def inspectMessage(raw: bytes) -> MessageInfo:
-    """Read only the outer header so the caller knows what services were applied
-    (and which key it is encrypted to) before asking for a passphrase."""
+    #read only the outer header so the caller knows what services were applied
+    #(and which key it is encrypted to) before asking for a passphrase
     try:
         text = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError:
@@ -55,8 +55,8 @@ def inspectMessage(raw: bytes) -> MessageInfo:
         except json.JSONDecodeError:
             outer = json.loads(CryptoPrimitives.radix64decode(text))
             is_armored = True
-    except (ValueError, json.JSONDecodeError) as exc:
-        raise MessageError(f"Not a valid PGP message file.\n({exc})")
+    except (ValueError, json.JSONDecodeError):
+        raise MessageError("Not a valid PGP message file.")
 
     if "payload" not in outer:
         raise MessageError("Not a valid PGP message file (missing payload).")

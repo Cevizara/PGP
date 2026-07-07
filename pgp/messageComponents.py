@@ -48,7 +48,7 @@ def verifySignature(publicKey, signatureComponent: dict, message: bytes) -> bool
     #recompute hash(M || timestamp) and check it against the signature with the sender's key
     timestamp = signatureComponent.get("timestamp", "")
     digest = hashMessage(message, timestamp)
-    first_two_bytes = digest[:2]                     # prva dva bajta ponovo izracunatog hash-a
+    first_two_bytes = digest[:2]                     # first two bytes of hash-a
     leading_two_octets = first_two_bytes.hex().upper()
     if leading_two_octets != signatureComponent.get("leading_two_octets"):
         return False

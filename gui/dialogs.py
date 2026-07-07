@@ -334,8 +334,7 @@ class KeyDetailsDialog(_Modal):
         field("Type / size", f"RSA {entry.key_size}-bit")
         field("Created", entry.timestamp)
         if is_private:
-            algo = entry.enc_private_key.get("algo", "?")
-            field("Private key", f"stored encrypted ({algo}, salted SHA-1)")
+            field("Private key", "stored encrypted (AES-128-CBC, salted SHA-1)")
 
         ctk.CTkLabel(body, text="Public key (PEM)", anchor="w", text_color=theme.MUTED,
                      font=ctk.CTkFont(size=12)).pack(fill="x", pady=(10, 2))

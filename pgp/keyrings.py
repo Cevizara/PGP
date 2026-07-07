@@ -33,7 +33,7 @@ class Ring:
         return None
 
     def add(self, entry) -> None:
-        #replace any existing entry with the same Key ID (re-import / regenerate).
+        #replace any existing entry with the same Key ID.
         if self.get(entry.key_id):
             self.entries = [e for e in self.entries if e.key_id != entry.key_id]
         self.entries.append(entry)

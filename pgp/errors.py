@@ -2,14 +2,15 @@ class PGPError(Exception):
     #base class for all errors
     pass
 
-class WrongPassphrase(PGPError):
-    pass
-
 class KeyNotFound(PGPError):
     pass
 
 class InvalidKeyFile(PGPError):
     pass
+
+class WrongPassphrase(PGPError):
+    pass
+
 
 class MessageError(PGPError):
     pass
