@@ -34,7 +34,7 @@ class MessageResult:
     signer_note: str = ""
 
 
-def _senderPublicKey(km, keyId):
+def senderPublicKey(km, keyId):
     """PUa — sender's public key (contacts or our own). (key, user_id) or (None, None)."""
     entry = km.public_ring.get(keyId) or km.private_ring.get(keyId)
     if not entry:
@@ -95,7 +95,7 @@ def pgpReceive(km, raw: bytes, passphrase: str | None = None) -> MessageResult:
         signerKeyId = signatureComponent.get("signer_key_id")
         result.signer_key_id = signerKeyId
         result.sig_timestamp = signatureComponent.get("timestamp", "")
-        publicKey, userId = _senderPublicKey(km, signerKeyId)
+        publicKey, userId = senderPublicKey(km, signerKeyId)
         if publicKey is None:
             result.signature_valid = None
             result.signer_note = (f"Signer key {signerKeyId} is not in your keyring, "

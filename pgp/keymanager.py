@@ -16,7 +16,7 @@ from .models import PrivateKeyEntry, PublicKeyEntry
 from .errors import WrongPassphrase, KeyNotFound, InvalidKeyFile
 
 
-def _now() -> str:
+def now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
@@ -38,7 +38,7 @@ class KeyManager:
             key_size=key_size,
             public_key=K.publicKeyToPem(public_key),
             enc_private_key=encrypt_private_key(K.privateKeyToPem(private_key), passphrase),
-            timestamp=_now(),
+            timestamp=now(),
         )
         self.private_ring.add(entry)
         return entry
@@ -86,7 +86,7 @@ class KeyManager:
             email=email,
             key_size=public_key.key_size,
             public_key=K.publicKeyToPem(public_key),
-            timestamp=_now(),
+            timestamp=now(),
         )
         self.public_ring.add(entry)
         return entry
@@ -109,7 +109,7 @@ class KeyManager:
             key_size=public_key.key_size,
             public_key=K.publicKeyToPem(public_key),
             enc_private_key=encrypt_private_key(K.privateKeyToPem(private_key), keyring_passphrase),
-            timestamp=_now(),
+            timestamp=now(),
         )
         self.private_ring.add(entry)
         return entry

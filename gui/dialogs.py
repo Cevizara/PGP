@@ -11,6 +11,8 @@ gets squeezed — never the action buttons.
 
 import customtkinter as ctk
 
+from . import theme
+
 PAD = 16
 
 
@@ -29,7 +31,7 @@ class _Modal(ctk.CTkToplevel):
         self.result = None
         self.title(title)
         self.resizable(False, False)
-        self.configure(fg_color="#1b1d23")
+        self.configure(fg_color=theme.PANEL)
         _center(self, parent, width, height)
         self.transient(parent)
         # grab once the window is actually on screen (avoids Tcl "not viewable")
@@ -54,7 +56,7 @@ class _Modal(ctk.CTkToplevel):
 
 
 def _label(parent, text):
-    return ctk.CTkLabel(parent, text=text, anchor="w", text_color="#9aa3b2",
+    return ctk.CTkLabel(parent, text=text, anchor="w", text_color=theme.MUTED,
                         font=ctk.CTkFont(size=12))
 
 
@@ -64,7 +66,7 @@ def _title(parent, text, subtitle=None):
     ctk.CTkLabel(frame, text=text, anchor="w",
                  font=ctk.CTkFont(size=18, weight="bold")).pack(fill="x")
     if subtitle:
-        ctk.CTkLabel(frame, text=subtitle, anchor="w", text_color="#9aa3b2",
+        ctk.CTkLabel(frame, text=subtitle, anchor="w", text_color=theme.MUTED,
                      font=ctk.CTkFont(size=12), justify="left").pack(fill="x", pady=(2, 0))
 
 
@@ -74,7 +76,8 @@ def _footer(parent, on_ok, ok_text="OK"):
     bar.pack(fill="x", side="bottom", padx=PAD, pady=PAD)
     ctk.CTkButton(bar, text=ok_text, command=on_ok, width=130, height=36).pack(side="right")
     ctk.CTkButton(bar, text="Cancel", command=parent._cancel, width=100, height=36,
-                  fg_color="#2b2f3a", hover_color="#363b48").pack(side="right", padx=(0, 10))
+                  fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOV,
+                  text_color=theme.NEUTRAL_TEXT).pack(side="right", padx=(0, 10))
     return bar
 
 
@@ -116,7 +119,7 @@ class GenerateKeyDialog(_Modal):
         self.pw2 = ctk.CTkEntry(body, show="•", height=34)
         self.pw2.pack(fill="x", pady=(2, 8))
 
-        self.err = ctk.CTkLabel(body, text="", text_color="#f87171",
+        self.err = ctk.CTkLabel(body, text="", text_color=theme.ERROR,
                                 font=ctk.CTkFont(size=12), anchor="w")
         self.err.pack(fill="x")
         self.after(160, self.name.focus_set)
@@ -148,7 +151,7 @@ class PassphraseDialog(_Modal):
         self.pw = ctk.CTkEntry(body, show="•", height=34)
         self.pw.pack(fill="x", pady=(8, 6))
         self.pw.bind("<Return>", lambda e: self._submit())
-        self.err = ctk.CTkLabel(body, text="", text_color="#f87171",
+        self.err = ctk.CTkLabel(body, text="", text_color=theme.ERROR,
                                 font=ctk.CTkFont(size=12), anchor="w")
         self.err.pack(fill="x")
         self.after(160, self.pw.focus_set)
@@ -179,7 +182,7 @@ class ImportPublicDialog(_Modal):
         _label(body, "Email").pack(fill="x")
         self.email = ctk.CTkEntry(body, height=34)
         self.email.pack(fill="x", pady=(2, 6))
-        self.err = ctk.CTkLabel(body, text="", text_color="#f87171",
+        self.err = ctk.CTkLabel(body, text="", text_color=theme.ERROR,
                                 font=ctk.CTkFont(size=12), anchor="w")
         self.err.pack(fill="x")
         self.after(160, self.name.focus_set)
@@ -216,7 +219,7 @@ class ImportPairDialog(_Modal):
         _label(body, "New passphrase to protect it in your key ring").pack(fill="x")
         self.pw = ctk.CTkEntry(body, show="•", height=34)
         self.pw.pack(fill="x", pady=(2, 6))
-        self.err = ctk.CTkLabel(body, text="", text_color="#f87171",
+        self.err = ctk.CTkLabel(body, text="", text_color=theme.ERROR,
                                 font=ctk.CTkFont(size=12), anchor="w")
         self.err.pack(fill="x")
         self.after(160, self.name.focus_set)
@@ -251,7 +254,7 @@ class ExportPairDialog(_Modal):
         _label(body, "Password for the exported file (optional but recommended)").pack(fill="x")
         self.filepw = ctk.CTkEntry(body, show="•", height=34)
         self.filepw.pack(fill="x", pady=(2, 6))
-        self.err = ctk.CTkLabel(body, text="", text_color="#f87171",
+        self.err = ctk.CTkLabel(body, text="", text_color=theme.ERROR,
                                 font=ctk.CTkFont(size=12), anchor="w")
         self.err.pack(fill="x")
         self.after(160, self.pw.focus_set)
@@ -269,18 +272,19 @@ class ExportPairDialog(_Modal):
 class _MessageBox(_Modal):
     def __init__(self, parent, title, text, kind="info", yesno=False):
         super().__init__(parent, title, 460, 240)
-        colors = {"info": "#3b82f6", "error": "#f87171", "success": "#34d399",
-                  "warn": "#fbbf24"}
+        colors = {"info": theme.INFO, "error": theme.ERROR, "success": theme.SUCCESS,
+                  "warn": theme.WARN}
         icons = {"info": "i", "error": "!", "success": "✓", "warn": "!"}
-        accent = colors.get(kind, "#3b82f6")
+        accent = colors.get(kind, theme.INFO)
 
         # footer first so buttons are always visible
         bar = ctk.CTkFrame(self, fg_color="transparent", height=56)
         bar.pack(fill="x", side="bottom", padx=PAD, pady=PAD)
         if yesno:
             ctk.CTkButton(bar, text="Yes", width=120, height=36, command=self._yes).pack(side="right")
-            ctk.CTkButton(bar, text="No", width=90, height=36, fg_color="#2b2f3a",
-                          hover_color="#363b48", command=self._cancel).pack(side="right", padx=(0, 10))
+            ctk.CTkButton(bar, text="No", width=90, height=36, fg_color=theme.NEUTRAL,
+                          hover_color=theme.NEUTRAL_HOV, text_color=theme.NEUTRAL_TEXT,
+                          command=self._cancel).pack(side="right", padx=(0, 10))
         else:
             ctk.CTkButton(bar, text="OK", width=120, height=36, command=self._ok).pack(side="right")
 
@@ -293,7 +297,7 @@ class _MessageBox(_Modal):
                      font=ctk.CTkFont(size=16, weight="bold")).pack(side="left", padx=12)
 
         ctk.CTkLabel(self, text=text, anchor="w", justify="left", wraplength=410,
-                     text_color="#c8cdd8").pack(fill="both", expand=True, padx=PAD, pady=(0, 6))
+                     text_color=theme.TEXT).pack(fill="both", expand=True, padx=PAD, pady=(0, 6))
 
     def _ok(self):
         self.result = True
@@ -320,7 +324,7 @@ class KeyDetailsDialog(_Modal):
         def field(label, value):
             row = ctk.CTkFrame(body, fg_color="transparent"); row.pack(fill="x", pady=2)
             ctk.CTkLabel(row, text=label, width=130, anchor="w",
-                         text_color="#9aa3b2", font=ctk.CTkFont(size=12)).pack(side="left")
+                         text_color=theme.MUTED, font=ctk.CTkFont(size=12)).pack(side="left")
             ctk.CTkLabel(row, text=value, anchor="w", justify="left",
                          font=ctk.CTkFont(size=12)).pack(side="left", fill="x", expand=True)
 
@@ -333,7 +337,7 @@ class KeyDetailsDialog(_Modal):
             algo = entry.enc_private_key.get("algo", "?")
             field("Private key", f"stored encrypted ({algo}, salted SHA-1)")
 
-        ctk.CTkLabel(body, text="Public key (PEM)", anchor="w", text_color="#9aa3b2",
+        ctk.CTkLabel(body, text="Public key (PEM)", anchor="w", text_color=theme.MUTED,
                      font=ctk.CTkFont(size=12)).pack(fill="x", pady=(10, 2))
         box = ctk.CTkTextbox(body, height=170, font=ctk.CTkFont(family="Consolas", size=11))
         box.pack(fill="both", expand=True)

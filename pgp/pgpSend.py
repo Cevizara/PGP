@@ -9,7 +9,7 @@ from . import fileSerializer as FileSerializer
 from .errors import KeyNotFound
 
 
-def _recipientPublicKey(km, keyId):
+def recipientPublicKey(km, keyId):
     """PUb — recipient's public key from the public ring (or our own keys)."""
     entry = km.public_ring.get(keyId) or km.private_ring.get(keyId)
     if not entry:
@@ -41,7 +41,7 @@ def pgpSend(km, message: bytes, filename: str, *,
     if confidentialityRequired:
         sessionKey = CryptoPrimitives.generateSessionKey(symAlgo)
         iv, payload = CryptoPrimitives.symmetricEncrypt(symAlgo, sessionKey, payload)
-        encryptedSessionKey = CryptoPrimitives.rsaEncrypt(_recipientPublicKey(km, recipientKeyId), sessionKey)
+        encryptedSessionKey = CryptoPrimitives.rsaEncrypt(recipientPublicKey(km, recipientKeyId), sessionKey)
         sessionKeyComponent = MessageComponents.buildSessionKeyComponent(encryptedSessionKey, recipientKeyId)
 
     # wrap everything in the file container

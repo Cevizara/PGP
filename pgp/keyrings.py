@@ -11,7 +11,7 @@ import json
 from .models import PrivateKeyEntry, PublicKeyEntry
 
 
-class _Ring:
+class Ring:
     entry_cls = None
     filename = None
 
@@ -57,11 +57,11 @@ class _Ring:
         return len(self.entries)
 
 
-class PrivateKeyRing(_Ring):
+class PrivateKeyRing(Ring):
     entry_cls = PrivateKeyEntry
     filename = "private_keyring.json"
 
 
-class PublicKeyRing(_Ring):
+class PublicKeyRing(Ring):
     entry_cls = PublicKeyEntry
     filename = "public_keyring.json"

@@ -17,10 +17,11 @@ import customtkinter as ctk
 from pgp.keymanager import KeyManager
 from pgp.errors import PGPError, WrongPassphrase
 
-from .widgets import style_treeview, make_table
+from .widgets import style_treeview, make_table, restyle_table
 from .send_view import SendView
 from .receive_view import ReceiveView
 from . import dialogs as dlg
+from . import theme
 
 DEFAULT_STORAGE_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "keystore")
@@ -48,12 +49,16 @@ class App(ctk.CTk):
     def __init__(self, storage_dir=None):
         super().__init__()
         self.storage_dir = storage_dir or DEFAULT_STORAGE_DIR
-        # Show the keystore folder in the title so two demo instances are
-        # immediately distinguishable side by side.
-        self.title(f"PGP — Zaštita podataka   [{os.path.basename(self.storage_dir)}]")
+        self.title("PGP App")
+        # window / taskbar icon
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "pgp.ico")
+        try:
+            self.iconbitmap(icon_path)
+        except Exception:
+            pass
         self.geometry("980x640")
         self.minsize(860, 560)
-        self.configure(fg_color="#15171c")
+        self.configure(fg_color=theme.WINDOW)
 
         self.km = KeyManager(self.storage_dir)
         style_treeview()
@@ -71,14 +76,29 @@ class App(ctk.CTk):
     def _build_header(self):
         header = ctk.CTkFrame(self, fg_color="transparent", height=64)
         header.pack(fill="x", padx=20, pady=(18, 6))
-        ctk.CTkLabel(header, text=f"PGP Key Manager  ·  {os.path.basename(self.storage_dir)}",
-                     font=ctk.CTkFont(size=22, weight="bold")).pack(anchor="w")
-        ctk.CTkLabel(header, text="Keys · exchange · sign · encrypt · decrypt · verify  •  Zaštita podataka 2025/26",
-                     text_color="#9aa3b2", font=ctk.CTkFont(size=12)).pack(anchor="w")
+        ctk.CTkLabel(header, text="PGP App", text_color=theme.TEXT,
+                     font=ctk.CTkFont(size=22, weight="bold")).pack(side="left")
+        # light / dark toggle (moon in dark mode, sun in light mode)
+        start = "☀" if ctk.get_appearance_mode() == "Light" else "☾"
+        self.theme_btn = ctk.CTkButton(
+            header, text=start, width=40, height=32, corner_radius=8,
+            fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOV,
+            text_color=theme.NEUTRAL_TEXT, font=ctk.CTkFont(size=16),
+            command=self._toggle_theme)
+        self.theme_btn.pack(side="right")
+
+    def _toggle_theme(self):
+        new = "light" if ctk.get_appearance_mode() == "Dark" else "dark"
+        ctk.set_appearance_mode(new)
+        self.theme_btn.configure(text="☀" if new == "light" else "☾")
+        # ttk tables are not CTk-aware -> recolour them by hand
+        style_treeview()
+        restyle_table(self.tree_private)
+        restyle_table(self.tree_public)
 
     def _build_tabs(self):
-        self.tabs = ctk.CTkTabview(self, fg_color="#1b1d23",
-                                   segmented_button_selected_color="#3b82f6",
+        self.tabs = ctk.CTkTabview(self, fg_color=theme.PANEL,
+                                   segmented_button_selected_color=theme.PRIMARY,
                                    command=self._on_tab_change)
         self.tabs.pack(fill="both", expand=True, padx=20, pady=10)
         self.tab_private = self.tabs.add("  My Keys  ")
@@ -104,24 +124,31 @@ class App(ctk.CTk):
         bar.pack(fill="x", padx=6, pady=(8, 6))
         return bar
 
-    def _btn(self, bar, text, command, primary=False):
+    def _btn(self, bar, text, command, kind="neutral"):
+        # kind -> (fill, hover, text, bold)  following the UX colour semantics
+        styles = {
+            "primary": (theme.PRIMARY, theme.PRIMARY_HOV, theme.ON_ACCENT, True),
+            "create":  (theme.CREATE, theme.CREATE_HOV, theme.ON_ACCENT, True),
+            "danger":  (theme.DANGER, theme.DANGER_HOV, theme.ON_ACCENT, False),
+            "neutral": (theme.NEUTRAL, theme.NEUTRAL_HOV, theme.NEUTRAL_TEXT, False),
+        }
+        fg, hover, txt, bold = styles[kind]
         return ctk.CTkButton(
             bar, text=text, command=command, height=34, corner_radius=8,
-            fg_color="#3b82f6" if primary else "#2b2f3a",
-            hover_color="#2563eb" if primary else "#363b48",
-            font=ctk.CTkFont(size=12, weight="bold" if primary else "normal"),
+            fg_color=fg, hover_color=hover, text_color=txt,
+            font=ctk.CTkFont(size=12, weight="bold" if bold else "normal"),
         )
 
     def _build_private_tab(self, parent):
         bar = self._toolbar(parent)
-        self._btn(bar, "+  Generate", self.on_generate, primary=True).pack(side="left", padx=(0, 8))
+        self._btn(bar, "+  Generate", self.on_generate, kind="create").pack(side="left", padx=(0, 8))
         self._btn(bar, "Import pair", self.on_import_pair).pack(side="left", padx=4)
         self._btn(bar, "Export public", lambda: self.on_export_public("private")).pack(side="left", padx=4)
         self._btn(bar, "Export pair", self.on_export_pair).pack(side="left", padx=4)
         self._btn(bar, "Details", lambda: self.on_details("private")).pack(side="left", padx=4)
-        self._btn(bar, "Delete", self.on_delete_private).pack(side="left", padx=4)
+        self._btn(bar, "Delete", self.on_delete_private, kind="danger").pack(side="left", padx=4)
 
-        card = ctk.CTkFrame(parent, fg_color="#242730", corner_radius=10)
+        card = ctk.CTkFrame(parent, fg_color=theme.CARD, corner_radius=10)
         card.pack(fill="both", expand=True, padx=6, pady=(2, 8))
         tree = make_table(card, PRIVATE_COLUMNS)
         tree.bind("<<TreeviewSelect>>", lambda e: self._update_status_from_selection(tree, "private"))
@@ -130,12 +157,12 @@ class App(ctk.CTk):
 
     def _build_public_tab(self, parent):
         bar = self._toolbar(parent)
-        self._btn(bar, "+  Import public", self.on_import_public, primary=True).pack(side="left", padx=(0, 8))
+        self._btn(bar, "+  Import public", self.on_import_public, kind="primary").pack(side="left", padx=(0, 8))
         self._btn(bar, "Export public", lambda: self.on_export_public("public")).pack(side="left", padx=4)
         self._btn(bar, "Details", lambda: self.on_details("public")).pack(side="left", padx=4)
-        self._btn(bar, "Delete", self.on_delete_public).pack(side="left", padx=4)
+        self._btn(bar, "Delete", self.on_delete_public, kind="danger").pack(side="left", padx=4)
 
-        card = ctk.CTkFrame(parent, fg_color="#242730", corner_radius=10)
+        card = ctk.CTkFrame(parent, fg_color=theme.CARD, corner_radius=10)
         card.pack(fill="both", expand=True, padx=6, pady=(2, 8))
         tree = make_table(card, PUBLIC_COLUMNS)
         tree.bind("<<TreeviewSelect>>", lambda e: self._update_status_from_selection(tree, "public"))
@@ -143,7 +170,7 @@ class App(ctk.CTk):
         return tree
 
     def _build_statusbar(self):
-        self.status = ctk.CTkLabel(self, text="Ready", anchor="w", text_color="#9aa3b2",
+        self.status = ctk.CTkLabel(self, text="Ready", anchor="w", text_color=theme.MUTED,
                                    font=ctk.CTkFont(size=12))
         self.status.pack(fill="x", padx=24, pady=(0, 12))
 

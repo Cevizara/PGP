@@ -48,10 +48,12 @@ def buildSignature(message: bytes, privateKey, signerKeyId: str) -> dict:
     timestamp = now()
     digest = hashMessage(message, timestamp)
     signature = CryptoPrimitives.rsaSign(privateKey, message + timestamp.encode("utf-8"))
+    first_two_bytes = digest[:2]                     # prva dva bajta hesa
+    leading_two_octets = first_two_bytes.hex().upper()   # kao hex string, velika slova
     return {
         "timestamp": timestamp,
         "signer_key_id": signerKeyId,
-        "leading_two_octets": digest[:2].hex().upper(),
+        "leading_two_octets": leading_two_octets,
         "signature": b64(signature),
     }
 
@@ -60,7 +62,9 @@ def verifySignature(publicKey, signatureComponent: dict, message: bytes) -> bool
     """Recompute H(M||ts) and check it against the signature with the sender's key."""
     timestamp = signatureComponent.get("timestamp", "")
     digest = hashMessage(message, timestamp)
-    if digest[:2].hex().upper() != signatureComponent.get("leading_two_octets"):
+    first_two_bytes = digest[:2]                     # prva dva bajta ponovo izračunatog hesa
+    leading_two_octets = first_two_bytes.hex().upper()
+    if leading_two_octets != signatureComponent.get("leading_two_octets"):
         return False
     return CryptoPrimitives.rsaVerify(publicKey, unb64(signatureComponent["signature"]),
                         message + timestamp.encode("utf-8"))

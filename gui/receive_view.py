@@ -15,11 +15,14 @@ from pgp.pgpReceive import pgpReceive
 from pgp.fileSerializer import inspectMessage
 from pgp.errors import PGPError, WrongPassphrase, NeedPassphrase, MessageError
 from . import dialogs as dlg
+from . import theme
 
 
 class ReceiveView(ctk.CTkScrollableFrame):
     def __init__(self, parent, app):
-        super().__init__(parent, fg_color="transparent")
+        # A concrete themed colour (not "transparent") so the scrollable canvas
+        # follows the light/dark toggle — transparent leaves it stuck dark.
+        super().__init__(parent, fg_color=theme.PANEL)
         self.app = app
         self.km = app.km
         self.result = None             # last successful MessageResult (for saving)
@@ -27,10 +30,12 @@ class ReceiveView(ctk.CTkScrollableFrame):
 
     def _build(self):
         ctk.CTkButton(self, text="Open message file…", height=40,
+                      fg_color=theme.PRIMARY, hover_color=theme.PRIMARY_HOV,
+                      text_color=theme.ON_ACCENT,
                       font=ctk.CTkFont(size=13, weight="bold"),
                       command=self._open).pack(fill="x", pady=(6, 8))
         self.file_label = ctk.CTkLabel(self, text="No file opened.", anchor="w",
-                                       text_color="#9aa3b2", font=ctk.CTkFont(size=12))
+                                       text_color=theme.MUTED, font=ctk.CTkFont(size=12))
         self.file_label.pack(fill="x")
 
         # detected services
@@ -50,7 +55,8 @@ class ReceiveView(ctk.CTkScrollableFrame):
         self.textbox.configure(state="disabled")
 
         self.save_btn = ctk.CTkButton(self, text="Save message…", height=36,
-                                      fg_color="#2b2f3a", hover_color="#363b48",
+                                      fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOV,
+                                      text_color=theme.NEUTRAL_TEXT,
                                       command=self._save, state="disabled")
         self.save_btn.pack(fill="x", pady=(8, 6))
 
@@ -77,7 +83,7 @@ class ReceiveView(ctk.CTkScrollableFrame):
         if info.radix64:    badges.append("Radix-64")
         self.detected.configure(
             text="Detected:  " + ("  ·  ".join(badges) if badges else "plain (no services)"),
-            text_color="#9aa3b2")
+            text_color=theme.MUTED)
 
         # 2) process, prompting for a passphrase only if needed
         passphrase = None
@@ -123,11 +129,11 @@ class ReceiveView(ctk.CTkScrollableFrame):
         else:
             lines.append(f"⚠  {result.signer_note}")
 
-        color = "#34d399"
+        color = theme.SUCCESS
         if result.signature_valid is False:
-            color = "#f87171"
+            color = theme.ERROR
         elif result.signature_valid is None and result.was_signed:
-            color = "#fbbf24"
+            color = theme.WARN
         self.outcome.configure(text="\n".join(lines), text_color=color)
 
         # show the message text (decode for display; keep raw bytes for saving)
@@ -154,12 +160,12 @@ class ReceiveView(ctk.CTkScrollableFrame):
 
     # ------------------------------------------------------------------ #
     def _reset_outcome(self, note):
-        self.outcome.configure(text=note, text_color="#9aa3b2")
+        self.outcome.configure(text=note, text_color=theme.MUTED)
 
     def _fail(self, msg):
         self.result = None
         self.detected.configure(text="")
-        self.outcome.configure(text=f"❌  {msg}", text_color="#f87171")
+        self.outcome.configure(text=f"❌  {msg}", text_color=theme.ERROR)
         self.textbox.configure(state="normal"); self.textbox.delete("1.0", "end")
         self.textbox.configure(state="disabled")
         self.save_btn.configure(state="disabled")

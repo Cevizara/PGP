@@ -13,11 +13,12 @@ from pgp.pgpSend import pgpSend
 from pgp import cryptoPrimitives as cp
 from pgp.errors import PGPError, WrongPassphrase
 from . import dialogs as dlg
+from . import theme
 
 NO_KEYS = "— no keys available —"
 
 
-class SendView(ctk.CTkScrollableFrame):
+class SendView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent, fg_color="transparent")
         self.app = app
@@ -32,23 +33,36 @@ class SendView(ctk.CTkScrollableFrame):
     # ------------------------------------------------------------------ #
     def _section(self, text):
         ctk.CTkLabel(self, text=text, anchor="w",
-                     font=ctk.CTkFont(size=14, weight="bold")).pack(fill="x", pady=(14, 4))
+                     font=ctk.CTkFont(size=14, weight="bold")).pack(fill="x", pady=(10, 3))
 
     def _build(self):
+        # Action + status are pinned to the bottom so they stay visible without
+        # scrolling, no matter how tight the window is.
+        self.status = ctk.CTkLabel(self, text="", text_color=theme.MUTED,
+                                   anchor="w", font=ctk.CTkFont(size=12))
+        self.status.pack(side="bottom", fill="x", pady=(4, 0))
+        ctk.CTkButton(self, text="Create message file", height=40,
+                      fg_color=theme.CREATE, hover_color=theme.CREATE_HOV,
+                      text_color=theme.ON_ACCENT,
+                      font=ctk.CTkFont(size=13, weight="bold"),
+                      command=self._create).pack(side="bottom", fill="x", pady=(12, 4))
+
         self._section("Message")
-        self.textbox = ctk.CTkTextbox(self, height=150, font=ctk.CTkFont(size=13))
+        self.textbox = ctk.CTkTextbox(self, height=120, font=ctk.CTkFont(size=13))
         self.textbox.pack(fill="x")
 
         srcbar = ctk.CTkFrame(self, fg_color="transparent")
         srcbar.pack(fill="x", pady=(6, 0))
         ctk.CTkButton(srcbar, text="Load from file…", width=130, height=30,
-                      fg_color="#2b2f3a", hover_color="#363b48",
+                      fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOV,
+                      text_color=theme.NEUTRAL_TEXT,
                       command=self._load_file).pack(side="left")
         self.src_label = ctk.CTkLabel(srcbar, text="Source: typed text",
-                                      text_color="#9aa3b2", font=ctk.CTkFont(size=12))
+                                      text_color=theme.MUTED, font=ctk.CTkFont(size=12))
         self.src_label.pack(side="left", padx=12)
         self.clear_src_btn = ctk.CTkButton(srcbar, text="Use typed text", width=120, height=30,
-                                           fg_color="#2b2f3a", hover_color="#363b48",
+                                           fg_color=theme.NEUTRAL, hover_color=theme.NEUTRAL_HOV,
+                                           text_color=theme.NEUTRAL_TEXT,
                                            command=self._clear_file)
         # shown only when a file is loaded
 
@@ -61,39 +75,31 @@ class SendView(ctk.CTkScrollableFrame):
         self.r64_var = ctk.BooleanVar(value=False)
 
         # Sign row
-        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=4)
+        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=2)
         ctk.CTkCheckBox(row, text="Sign  (authenticity)", variable=self.sign_var,
                         command=self._sync, width=200).pack(side="left")
-        ctk.CTkLabel(row, text="with my key:", text_color="#9aa3b2").pack(side="left", padx=(10, 6))
+        ctk.CTkLabel(row, text="with my key:", text_color=theme.MUTED).pack(side="left", padx=(10, 6))
         self.signer_menu = ctk.CTkOptionMenu(row, values=[NO_KEYS], width=300)
         self.signer_menu.pack(side="left")
 
         # Encrypt row
-        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=4)
+        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=2)
         ctk.CTkCheckBox(row, text="Encrypt  (secrecy)", variable=self.enc_var,
                         command=self._sync, width=200).pack(side="left")
-        ctk.CTkLabel(row, text="for:", text_color="#9aa3b2").pack(side="left", padx=(10, 6))
+        ctk.CTkLabel(row, text="for:", text_color=theme.MUTED).pack(side="left", padx=(10, 6))
         self.recipient_menu = ctk.CTkOptionMenu(row, values=[NO_KEYS], width=300)
         self.recipient_menu.pack(side="left")
 
-        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(row, text="algorithm:", text_color="#9aa3b2").pack(side="left", padx=(210, 6))
+        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=(0, 2))
+        ctk.CTkLabel(row, text="algorithm:", text_color=theme.MUTED).pack(side="left", padx=(210, 6))
         self.algo_menu = ctk.CTkSegmentedButton(row, values=cp.ALGORITHM_NAMES)
         self.algo_menu.set(cp.ALGORITHM_NAMES[0])
         self.algo_menu.pack(side="left")
 
         # Compress + Radix64
-        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=4)
+        row = ctk.CTkFrame(self, fg_color="transparent"); row.pack(fill="x", pady=2)
         ctk.CTkCheckBox(row, text="Compress  (ZIP)", variable=self.comp_var, width=200).pack(side="left")
         ctk.CTkCheckBox(row, text="Radix-64  (ASCII armor)", variable=self.r64_var).pack(side="left", padx=10)
-
-        # --- action ----------------------------------------------------- #
-        ctk.CTkButton(self, text="Create message file", height=40,
-                      font=ctk.CTkFont(size=13, weight="bold"),
-                      command=self._create).pack(fill="x", pady=(18, 6))
-        self.status = ctk.CTkLabel(self, text="", text_color="#9aa3b2",
-                                   anchor="w", font=ctk.CTkFont(size=12))
-        self.status.pack(fill="x")
 
     # ------------------------------------------------------------------ #
     def refresh(self):
