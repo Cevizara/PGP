@@ -12,7 +12,7 @@ import json
 import base64
 from datetime import datetime, timezone
 
-from . import cryptoPrimitives as cp
+from . import cryptoPrimitives as CryptoPrimitives
 
 
 def now() -> str:
@@ -40,14 +40,14 @@ def buildMessageComponent(message: bytes, filename: str) -> dict:
 # ------------------------------------------------------------------ #
 def hashMessage(message: bytes, timestamp: str) -> bytes:
     """H(M || timestamp) -> SHA-1 digest (timestamp bound in for anti-replay)."""
-    return cp.sha1(message + timestamp.encode("utf-8"))
+    return CryptoPrimitives.sha1(message + timestamp.encode("utf-8"))
 
 
 def buildSignature(message: bytes, privateKey, signerKeyId: str) -> dict:
     """Sign H(M||ts) with the sender's private key."""
     timestamp = now()
     digest = hashMessage(message, timestamp)
-    signature = cp.rsaSign(privateKey, message + timestamp.encode("utf-8"))
+    signature = CryptoPrimitives.rsaSign(privateKey, message + timestamp.encode("utf-8"))
     return {
         "timestamp": timestamp,
         "signer_key_id": signerKeyId,
@@ -62,7 +62,7 @@ def verifySignature(publicKey, signatureComponent: dict, message: bytes) -> bool
     digest = hashMessage(message, timestamp)
     if digest[:2].hex().upper() != signatureComponent.get("leading_two_octets"):
         return False
-    return cp.rsaVerify(publicKey, unb64(signatureComponent["signature"]),
+    return CryptoPrimitives.rsaVerify(publicKey, unb64(signatureComponent["signature"]),
                         message + timestamp.encode("utf-8"))
 
 

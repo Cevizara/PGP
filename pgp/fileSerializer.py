@@ -1,6 +1,6 @@
 """The on-disk file format: the outer JSON container and how to read it.
 
-  Outer: version, flags (signed/compressed/encrypted/radix64), sym_algo, iv,
+  Outer: flags (signed/compressed/encrypted/radix64), sym_algo, iv,
          session_key {recipient_key_id, enc_session_key}, payload
 
 `assembleContainer` writes it, `inspectMessage` reads the header back (without
@@ -11,11 +11,9 @@ the whole container.
 import json
 from dataclasses import dataclass
 
-from . import messageComponents as mc
-from . import cryptoPrimitives as cp
+from . import messageComponents as MessageComponents
+from . import cryptoPrimitives as CryptoPrimitives
 from .errors import MessageError
-
-VERSION = "PGP-ZP/1.0"
 
 
 @dataclass
@@ -34,22 +32,21 @@ def assembleContainer(*, signed, compressed, encrypted, radix64,
                       symAlgo, iv, sessionKeyComponent, payload) -> bytes:
     """The final outer container (JSON) describing what was applied + the payload."""
     outer = {
-        "version": VERSION,
         "signed": bool(signed),
         "compressed": bool(compressed),
         "encrypted": bool(encrypted),
         "radix64": bool(radix64),
         "sym_algo": symAlgo if encrypted else None,
-        "iv": mc.b64(iv) if iv is not None else None,
+        "iv": MessageComponents.b64(iv) if iv is not None else None,
         "session_key": sessionKeyComponent,
-        "payload": mc.b64(payload),
+        "payload": MessageComponents.b64(payload),
     }
     return json.dumps(outer, indent=2).encode("utf-8")
 
 
 def armor(container: bytes) -> bytes:
     """R64 — Base64-armor the whole container into ASCII."""
-    return cp.radix64encode(container).encode("ascii")
+    return CryptoPrimitives.radix64encode(container).encode("ascii")
 
 
 def inspectMessage(raw: bytes) -> MessageInfo:
@@ -66,7 +63,7 @@ def inspectMessage(raw: bytes) -> MessageInfo:
             outer = json.loads(text)
             is_armored = False
         except json.JSONDecodeError:
-            outer = json.loads(cp.radix64decode(text))
+            outer = json.loads(CryptoPrimitives.radix64decode(text))
             is_armored = True
     except (ValueError, json.JSONDecodeError) as exc:
         raise MessageError(f"Not a valid PGP message file.\n({exc})")
@@ -88,4 +85,4 @@ def inspectMessage(raw: bytes) -> MessageInfo:
 
 def payloadBytes(info: MessageInfo) -> bytes:
     """The raw payload bytes carried by the container."""
-    return mc.unb64(info.outer["payload"])
+    return MessageComponents.unb64(info.outer["payload"])

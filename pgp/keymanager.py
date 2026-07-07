@@ -29,7 +29,7 @@ class KeyManager:
     # ------------------------------------------------------------------ #
     # Requirement 1: generate / delete RSA key pairs                     #
     # ------------------------------------------------------------------ #
-    def generate_keypair(self, name, email, key_size, passphrase) -> PrivateKeyEntry:
+    def generateKeyPair(self, name, email, key_size, passphrase) -> PrivateKeyEntry:
         private_key, public_key = K.generateRsaPairOfKeys(key_size)
         entry = PrivateKeyEntry(
             key_id=K.computeKeyId(public_key),
@@ -43,12 +43,12 @@ class KeyManager:
         self.private_ring.add(entry)
         return entry
 
-    def delete_private_key(self, key_id) -> None:
+    def deletePrivateKey(self, key_id) -> None:
         if not self.private_ring.get(key_id):
             raise KeyNotFound(key_id)
         self.private_ring.remove(key_id)
 
-    def delete_public_key(self, key_id) -> None:
+    def deletePublicKey(self, key_id) -> None:
         if not self.public_ring.get(key_id):
             raise KeyNotFound(key_id)
         self.public_ring.remove(key_id)
@@ -56,14 +56,14 @@ class KeyManager:
     # ------------------------------------------------------------------ #
     # Accessing a private key always requires the passphrase             #
     # ------------------------------------------------------------------ #
-    def get_private_key(self, key_id, passphrase):
+    def getPrivateKey(self, key_id, passphrase):
         entry = self.private_ring.get(key_id)
         if not entry:
             raise KeyNotFound(key_id)
         pem = decrypt_private_key(entry.enc_private_key, passphrase)  # may raise WrongPassphrase
         return K.loadPrivateKeyFromPem(pem)
 
-    def verify_passphrase(self, key_id, passphrase) -> bool:
+    def verifyPassphrase(self, key_id, passphrase) -> bool:
         try:
             self.get_private_key(key_id, passphrase)
             return True
@@ -73,7 +73,7 @@ class KeyManager:
     # ------------------------------------------------------------------ #
     # Requirement 2: import / export (.pem)                              #
     # ------------------------------------------------------------------ #
-    def import_public_key(self, path, name, email) -> PublicKeyEntry:
+    def importPublicKey(self, path, name, email) -> PublicKeyEntry:
         with open(path, "rb") as f:
             data = f.read()
         try:
@@ -91,7 +91,7 @@ class KeyManager:
         self.public_ring.add(entry)
         return entry
 
-    def import_keypair(self, path, pem_password, name, email, keyring_passphrase) -> PrivateKeyEntry:
+    def importKeyPair(self, path, pem_password, name, email, keyring_passphrase) -> PrivateKeyEntry:
         with open(path, "rb") as f:
             data = f.read()
         try:
@@ -114,7 +114,7 @@ class KeyManager:
         self.private_ring.add(entry)
         return entry
 
-    def export_public_key(self, key_id, path) -> None:
+    def exportPublicKey(self, key_id, path) -> None:
         """Export the public key from either ring — checks private ring first."""
         entry = self.private_ring.get(key_id) or self.public_ring.get(key_id)
         if not entry:
@@ -122,9 +122,9 @@ class KeyManager:
         with open(path, "w", encoding="utf-8") as f:
             f.write(entry.public_key)
 
-    def export_keypair(self, key_id, keyring_passphrase, path, export_password=None) -> None:
+    def exportKeyPair(self, key_id, keyring_passphrase, path, export_password=None) -> None:
         # Unlocking the private key here enforces "every access needs a passphrase".
-        private_key = self.get_private_key(key_id, keyring_passphrase)  # may raise WrongPassphrase
+        private_key = self.getPrivateKey(key_id, keyring_passphrase)  # may raise WrongPassphrase
         pem = K.privateKeyToPem(private_key, export_password or None)
         with open(path, "wb") as f:
             f.write(pem)

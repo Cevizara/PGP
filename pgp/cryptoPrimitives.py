@@ -1,8 +1,5 @@
-"""Stateless cryptographic primitives used across the PGP scheme.
-
-One toolbox for the low-level operations — hashing, RSA, symmetric ciphers,
-compression and radix-64 — with no key storage or message orchestration.
-Those live in the key* and message modules.
+"""
+Osnovne operacije koriscene u PGP semi
 """
 
 import hashlib
@@ -22,7 +19,7 @@ import base64
 # Hashing                                                            #
 # ------------------------------------------------------------------ #
 def sha1(data: bytes) -> bytes:
-    """SHA-1 -> 20-byte digest."""
+    """SHA-1 160 bits digest."""
     return hashlib.sha1(data).digest()
 
 
