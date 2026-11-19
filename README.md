@@ -1,5 +1,7 @@
 # PGP Desktop Application
 
+![PGP overview: sender signs, encrypts, compresses and radix-64 encodes; the .pgp message travels over any channel; receiver decrypts and verifies the signature](docs/pgp-overview.jpg)
+
 A Python desktop application that implements the PGP message-protection workflow without using a ready-made PGP library. It supports key management and secure message exchange through a `customtkinter` GUI.
 
 The application creates protected `.pgp` message files that can be sent through any existing channel, including email, messaging apps, or cloud storage. The recipient opens the file with this application and decrypts it using their private key. After both users exchange and verify their public keys, they can communicate with message confidentiality, integrity, and sender authentication, even when the delivery channel itself is not trusted.
